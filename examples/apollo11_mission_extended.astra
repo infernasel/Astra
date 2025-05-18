@@ -1,0 +1,2159 @@
+/**
+ * ASTRA Programming Language
+ * Apollo 11 Mission Control Simulation (Extended Version)
+ * 
+ * This example demonstrates how ASTRA can be used to program complex
+ * space missions with real-time control, navigation, and error handling.
+ * 
+ * The code simulates the key phases of the Apollo 11 mission:
+ * 1. Launch and Earth orbit
+ * 2. Trans-lunar injection
+ * 3. Lunar orbit insertion
+ * 4. Lunar module descent
+ * 5. Surface operations
+ * 6. Lunar ascent
+ * 7. Trans-Earth injection
+ * 8. Re-entry and splashdown
+ */
+
+// Import required modules
+import Aerospace.Navigation;
+import Aerospace.Propulsion;
+import Aerospace.Guidance;
+import Aerospace.Telemetry;
+import Aerospace.LifeSupport;
+import Aerospace.Communication;
+import Math.Vector;
+import Math.Quaternion;
+import Math.Orbital;
+import System.Time;
+import System.Logging;
+import System.ErrorHandling;
+
+// Mission constants
+const MISSION_NAME = "Apollo 11";
+const LAUNCH_DATE = "1969-07-16T13:32:00Z";
+const EARTH_RADIUS = 6371.0; // km
+const MOON_RADIUS = 1737.1; // km
+const EARTH_MOON_DISTANCE = 384400.0; // km
+const LUNAR_ORBIT_ALTITUDE = 110.0; // km
+const LANDING_SITE = Vector3(0.67408, 23.47297, 0.0); // Mare Tranquillitatis coordinates
+const MISSION_CREW = ["Neil Armstrong", "Edwin Aldrin", "Michael Collins"];
+
+// Vehicle configuration
+const SATURN_V = {
+    stages: [
+        {
+            name: "S-IC",
+            engines: 5,
+            thrust: 7.6e6, // Newtons
+            specificImpulse: 263, // seconds
+            burnTime: 168, // seconds
+            propellantMass: 2.2e6 // kg
+        },
+        {
+            name: "S-II",
+            engines: 5,
+            thrust: 5.1e6, // Newtons
+            specificImpulse: 421, // seconds
+            burnTime: 384, // seconds
+            propellantMass: 4.4e5 // kg
+        },
+        {
+            name: "S-IVB",
+            engines: 1,
+            thrust: 1.0e6, // Newtons
+            specificImpulse: 421, // seconds
+            burnTime: 165 + 335, // First + second burn in seconds
+            propellantMass: 1.1e5 // kg
+        }
+    ],
+    totalMass: 2.97e6 // kg
+};
+
+const COMMAND_SERVICE_MODULE = {
+    name: "Columbia",
+    mass: 30332, // kg
+    engines: {
+        main: {
+            thrust: 91000, // Newtons
+            specificImpulse: 314 // seconds
+        },
+        rcs: {
+            thrust: 440, // Newtons
+            specificImpulse: 290 // seconds
+        }
+    },
+    power: {
+        fuelCells: 3,
+        capacity: 2.8 // kW
+    }
+};
+
+const LUNAR_MODULE = {
+    name: "Eagle",
+    mass: 15200, // kg
+    descentStage: {
+        engine: {
+            thrust: 45040, // Newtons
+            throttleRange: [0.1, 1.0],
+            specificImpulse: 311 // seconds
+        },
+        propellantMass: 8200 // kg
+    },
+    ascentStage: {
+        engine: {
+            thrust: 15600, // Newtons
+            specificImpulse: 311 // seconds
+        },
+        propellantMass: 2350 // kg
+    }
+};
+
+// Mission state
+var missionState = {
+    phase: "Pre-launch",
+    time: 0,
+    elapsedTime: 0,
+    earthOrbit: null,
+    lunarOrbit: null,
+    lunarDescentTrajectory: null,
+    lunarAscentTrajectory: null,
+    transEarthTrajectory: null,
+    reentryTrajectory: null,
+    commandModuleState: "Nominal",
+    lunarModuleState: "Docked",
+    crewStatus: "Nominal",
+    telemetry: {
+        position: Vector3(0, 0, 0),
+        velocity: Vector3(0, 0, 0),
+        attitude: Quaternion.identity(),
+        altitude: 0,
+        propellantRemaining: 1.0,
+        oxygenRemaining: 1.0,
+        powerRemaining: 1.0
+    },
+    anomalies: []
+};
+
+// Initialize mission logger
+const logger = new Logger(MISSION_NAME);
+logger.setLevel(LogLevel.INFO);
+logger.addFileHandler("apollo11_mission.log");
+logger.addConsoleHandler();
+
+/**
+ * Mission Control System
+ */
+class MissionControl {
+    constructor() {
+        this.flightDirector = "Gene Kranz";
+        this.capcom = "Bruce McCandless II";
+        this.guidanceOfficer = "Steve Bales";
+        this.flightDynamicsOfficer = "Jerry Bostick";
+        this.communicationSystems = new Communication.System("Deep Space Network");
+        
+        // Initialize subsystems
+        this.navigation = new Navigation.System();
+        this.propulsion = new Propulsion.Controller();
+        this.guidance = new Guidance.Computer();
+        this.telemetry = new Telemetry.System();
+        this.lifeSupport = new LifeSupport.Monitor();
+        
+        // Set up event handlers
+        this.setupEventHandlers();
+        
+        logger.info("Mission Control initialized");
+    }
+    
+    setupEventHandlers() {
+        // Critical system alerts
+        this.telemetry.onAlert(function(alert) {
+            logger.warning("TELEMETRY ALERT: " + alert.message);
+            this.handleAnomaly(alert);
+        });
+        
+        this.lifeSupport.onAlert(function(alert) {
+            logger.critical("LIFE SUPPORT ALERT: " + alert.message);
+            this.handleAnomaly(alert);
+        });
+        
+        this.propulsion.onAlert(function(alert) {
+            logger.warning("PROPULSION ALERT: " + alert.message);
+            this.handleAnomaly(alert);
+        });
+        
+        // Communication events
+        this.communicationSystems.onMessage(function(message) {
+            logger.info("CAPCOM: " + message);
+        });
+    }
+    
+    handleAnomaly(anomaly) {
+        missionState.anomalies.push({
+            time: missionState.elapsedTime,
+            type: anomaly.type,
+            message: anomaly.message,
+            severity: anomaly.severity
+        });
+        
+        // Implement anomaly response procedures
+        switch(anomaly.type) {
+            case "Guidance":
+                this.resolveGuidanceAnomaly(anomaly);
+                break;
+            case "Propulsion":
+                this.resolvePropulsionAnomaly(anomaly);
+                break;
+            case "LifeSupport":
+                this.resolveLifeSupportAnomaly(anomaly);
+                break;
+            case "Communication":
+                this.resolveCommunicationAnomaly(anomaly);
+                break;
+            default:
+                logger.warning("Unknown anomaly type: " + anomaly.type);
+        }
+    }
+    
+    resolveGuidanceAnomaly(anomaly) {
+        logger.info("Resolving guidance anomaly: " + anomaly.message);
+        
+        if (anomaly.severity == "Critical") {
+            // Switch to backup guidance system
+            this.guidance.switchToBackup();
+            logger.info("Switched to backup guidance system");
+        } else {
+            // Recalibrate primary guidance
+            this.guidance.recalibrate();
+            logger.info("Recalibrated primary guidance system");
+        }
+    }
+    
+    resolvePropulsionAnomaly(anomaly) {
+        logger.info("Resolving propulsion anomaly: " + anomaly.message);
+        
+        if (anomaly.severity == "Critical") {
+            // Abort current burn
+            this.propulsion.abortBurn();
+            logger.critical("Aborted current engine burn");
+            
+            // Recalculate trajectory
+            const newTrajectory = this.navigation.calculateEmergencyTrajectory();
+            this.guidance.setTrajectory(newTrajectory);
+            logger.info("Emergency trajectory calculated and set");
+        } else {
+            // Adjust engine parameters
+            this.propulsion.adjustParameters();
+            logger.info("Adjusted engine parameters");
+        }
+    }
+    
+    resolveLifeSupportAnomaly(anomaly) {
+        logger.info("Resolving life support anomaly: " + anomaly.message);
+        
+        if (anomaly.severity == "Critical") {
+            // Emergency life support procedures
+            this.lifeSupport.activateEmergencyMode();
+            logger.critical("Activated emergency life support mode");
+            
+            // Notify crew
+            this.communicationSystems.sendMessage("Crew, activate emergency oxygen supply");
+        } else {
+            // Adjust life support parameters
+            this.lifeSupport.adjustParameters();
+            logger.info("Adjusted life support parameters");
+        }
+    }
+    
+    resolveCommunicationAnomaly(anomaly) {
+        logger.info("Resolving communication anomaly: " + anomaly.message);
+        
+        if (anomaly.severity == "Critical") {
+            // Switch to backup communication system
+            this.communicationSystems.switchToBackup();
+            logger.info("Switched to backup communication system");
+        } else {
+            // Adjust antenna alignment
+            this.communicationSystems.realignAntenna();
+            logger.info("Realigned communication antenna");
+        }
+    }
+    
+    updateMissionState(newState) {
+        missionState = { ...missionState, ...newState };
+        logger.debug("Mission state updated: " + JSON.stringify(newState));
+    }
+}
+
+/**
+ * Saturn V Launch Vehicle Controller
+ */
+class SaturnVController {
+    constructor() {
+        this.currentStage = 0;
+        this.engineStatus = "Standby";
+        this.guidanceSystem = new Guidance.Computer();
+        this.navigationSystem = new Navigation.System();
+        
+        logger.info("Saturn V controller initialized");
+    }
+    
+    performLaunch() {
+        logger.info("Initiating launch sequence");
+        
+        try {
+            // Pre-launch checks
+            this.performPreLaunchChecks();
+            
+            // Ignition sequence
+            this.startIgnitionSequence();
+            
+            // Liftoff
+            this.liftoff();
+            
+            // First stage flight
+            this.firstStageFlight();
+            
+            // Stage separation and second stage ignition
+            this.stageSeparation(1);
+            
+            // Second stage flight
+            this.secondStageFlight();
+            
+            // Stage separation and third stage ignition
+            this.stageSeparation(2);
+            
+            // Third stage flight to orbit
+            this.thirdStageFlight();
+            
+            // Orbit insertion
+            this.orbitInsertion();
+            
+            logger.info("Launch sequence completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("Launch sequence failed: " + error.message);
+            this.handleLaunchAbort(error);
+            return false;
+        }
+    }
+    
+    performPreLaunchChecks() {
+        logger.info("Performing pre-launch checks");
+        
+        // Verify all systems
+        const systemChecks = {
+            guidance: this.guidanceSystem.selfTest(),
+            navigation: this.navigationSystem.selfTest(),
+            propulsion: this.propulsion.selfTest(),
+            electrical: true,
+            hydraulic: true,
+            communication: true
+        };
+        
+        // Check if all systems are go
+        const allSystemsGo = Object.values(systemChecks).every(status => status === true);
+        
+        if (!allSystemsGo) {
+            throw new Error("Pre-launch checks failed");
+        }
+        
+        logger.info("All systems go for launch");
+    }
+    
+    startIgnitionSequence() {
+        logger.info("Starting ignition sequence");
+        
+        // Simulate engine startup sequence
+        for (let i = 1; i <= 5; i++) {
+            logger.info(`S-IC Engine ${i} ignition`);
+            // In a real system, we would command each engine to start
+            // and verify proper startup parameters
+        }
+        
+        // Verify proper thrust buildup
+        const thrustOk = true; // Simulated
+        if (!thrustOk) {
+            throw new Error("Engine thrust buildup failed");
+        }
+        
+        this.engineStatus = "Running";
+        logger.info("All engines running at 100%");
+    }
+    
+    liftoff() {
+        logger.info("Liftoff! The Saturn V has cleared the tower");
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Ascent",
+            elapsedTime: 0,
+            telemetry: {
+                position: Vector3(0, 0, 0),
+                velocity: Vector3(0, 0, 10),
+                attitude: Quaternion.fromEuler(0, 0, 0),
+                altitude: 0
+            }
+        });
+        
+        // Start guidance
+        this.guidanceSystem.activateAscentGuidance();
+    }
+    
+    firstStageFlight() {
+        logger.info("First stage flight in progress");
+        
+        // Simulate first stage flight
+        for (let t = 0; t < SATURN_V.stages[0].burnTime; t += 10) {
+            // Update telemetry
+            const altitude = this.calculateAltitude(t);
+            const velocity = this.calculateVelocity(t);
+            const position = this.calculatePosition(t);
+            
+            missionControl.updateMissionState({
+                elapsedTime: t,
+                telemetry: {
+                    position: position,
+                    velocity: velocity,
+                    altitude: altitude,
+                    propellantRemaining: 1.0 - (t / SATURN_V.stages[0].burnTime)
+                }
+            });
+            
+            // Check for max Q (maximum aerodynamic pressure)
+            if (t >= 60 && t <= 80) {
+                logger.info("Vehicle passing through maximum dynamic pressure (Max Q)");
+                // Throttle down engines to reduce stress
+                this.propulsion.throttleDown(0.8);
+            }
+            
+            if (t >= 80) {
+                // Throttle back up after Max Q
+                this.propulsion.throttleUp(1.0);
+            }
+            
+            // Guidance updates
+            this.guidanceSystem.updateAscentGuidance(position, velocity);
+        }
+        
+        logger.info("First stage burnout");
+    }
+    
+    stageSeparation(stageNumber) {
+        logger.info(`Stage ${stageNumber} separation sequence initiated`);
+        
+        // Shutdown engines
+        this.propulsion.shutdownEngines();
+        
+        // Fire separation charges
+        this.propulsion.fireSeparationCharges(stageNumber);
+        
+        // Verify separation
+        const separationSuccessful = true; // Simulated
+        if (!separationSuccessful) {
+            throw new Error(`Stage ${stageNumber} separation failed`);
+        }
+        
+        // Start next stage engines
+        this.currentStage++;
+        logger.info(`Stage ${stageNumber + 1} ignition`);
+        this.propulsion.startEngines(this.currentStage);
+        
+        // Verify engine start
+        const engineStartSuccessful = true; // Simulated
+        if (!engineStartSuccessful) {
+            throw new Error(`Stage ${stageNumber + 1} engine start failed`);
+        }
+        
+        logger.info(`Stage ${stageNumber + 1} running nominally`);
+    }
+    
+    secondStageFlight() {
+        logger.info("Second stage flight in progress");
+        
+        // Simulate second stage flight
+        for (let t = 0; t < SATURN_V.stages[1].burnTime; t += 10) {
+            // Update telemetry
+            const baseTime = SATURN_V.stages[0].burnTime;
+            const altitude = this.calculateAltitude(baseTime + t);
+            const velocity = this.calculateVelocity(baseTime + t);
+            const position = this.calculatePosition(baseTime + t);
+            
+            missionControl.updateMissionState({
+                elapsedTime: baseTime + t,
+                telemetry: {
+                    position: position,
+                    velocity: velocity,
+                    altitude: altitude,
+                    propellantRemaining: 1.0 - (t / SATURN_V.stages[1].burnTime)
+                }
+            });
+            
+            // Jettison Launch Escape System if not already done
+            if (t == 30) {
+                logger.info("Jettisoning Launch Escape System");
+                this.propulsion.jettisonLES();
+            }
+            
+            // Guidance updates
+            this.guidanceSystem.updateAscentGuidance(position, velocity);
+        }
+        
+        logger.info("Second stage burnout");
+    }
+    
+    thirdStageFlight() {
+        logger.info("Third stage flight in progress");
+        
+        // Simulate third stage first burn (to orbit)
+        const baseTime = SATURN_V.stages[0].burnTime + SATURN_V.stages[1].burnTime;
+        const firstBurnTime = 165; // seconds
+        
+        for (let t = 0; t < firstBurnTime; t += 10) {
+            // Update telemetry
+            const altitude = this.calculateAltitude(baseTime + t);
+            const velocity = this.calculateVelocity(baseTime + t);
+            const position = this.calculatePosition(baseTime + t);
+            
+            missionControl.updateMissionState({
+                elapsedTime: baseTime + t,
+                telemetry: {
+                    position: position,
+                    velocity: velocity,
+                    altitude: altitude,
+                    propellantRemaining: 1.0 - (t / (SATURN_V.stages[2].burnTime))
+                }
+            });
+            
+            // Guidance updates
+            this.guidanceSystem.updateAscentGuidance(position, velocity);
+        }
+        
+        logger.info("Third stage first burn complete");
+    }
+    
+    orbitInsertion() {
+        logger.info("Parking orbit insertion");
+        
+        // Calculate orbital parameters
+        const altitude = 191.3; // km
+        const velocity = 7793.0; // m/s
+        const inclination = 32.5; // degrees
+        
+        // Create orbit object
+        const earthOrbit = Orbital.createOrbit({
+            centralBody: "Earth",
+            altitude: altitude,
+            velocity: velocity,
+            inclination: inclination
+        });
+        
+        missionControl.updateMissionState({
+            phase: "Earth Orbit",
+            earthOrbit: earthOrbit,
+            telemetry: {
+                altitude: altitude,
+                velocity: Vector3(0, velocity, 0)
+            }
+        });
+        
+        logger.info(`Successfully inserted into ${altitude} km Earth parking orbit`);
+    }
+    
+    performTranslunarInjection() {
+        logger.info("Preparing for Trans-Lunar Injection (TLI) burn");
+        
+        try {
+            // Verify systems before TLI
+            this.performPreTLIChecks();
+            
+            // Orient for TLI burn
+            this.orientForTLIBurn();
+            
+            // Perform TLI burn
+            this.executeTLIBurn();
+            
+            // Verify successful TLI
+            this.verifyTLI();
+            
+            logger.info("Trans-Lunar Injection completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("TLI sequence failed: " + error.message);
+            return false;
+        }
+    }
+    
+    performPreTLIChecks() {
+        logger.info("Performing pre-TLI system checks");
+        
+        // Check all systems
+        const systemChecks = {
+            guidance: this.guidanceSystem.selfTest(),
+            navigation: this.navigationSystem.selfTest(),
+            propulsion: this.propulsion.selfTest(),
+            electrical: true,
+            hydraulic: true,
+            communication: true
+        };
+        
+        // Check if all systems are go
+        const allSystemsGo = Object.values(systemChecks).every(status => status === true);
+        
+        if (!allSystemsGo) {
+            throw new Error("Pre-TLI checks failed");
+        }
+        
+        logger.info("All systems go for TLI");
+    }
+    
+    orientForTLIBurn() {
+        logger.info("Orienting vehicle for TLI burn");
+        
+        // Calculate required attitude
+        const tliAttitude = Quaternion.fromEuler(0, 90, 0);
+        
+        // Command attitude change
+        this.guidanceSystem.setAttitude(tliAttitude);
+        
+        // Verify attitude
+        const attitudeVerified = true; // Simulated
+        if (!attitudeVerified) {
+            throw new Error("Failed to achieve TLI attitude");
+        }
+        
+        logger.info("Vehicle oriented for TLI burn");
+    }
+    
+    executeTLIBurn() {
+        logger.info("Initiating TLI burn");
+        
+        // Start S-IVB second burn
+        this.propulsion.startEngines(2);
+        
+        // Simulate TLI burn
+        const tliDuration = 335; // seconds
+        for (let t = 0; t < tliDuration; t += 10) {
+            // Update telemetry
+            const baseTime = SATURN_V.stages[0].burnTime + SATURN_V.stages[1].burnTime + 165;
+            const velocity = this.calculateTLIVelocity(t);
+            
+            missionControl.updateMissionState({
+                elapsedTime: baseTime + t,
+                telemetry: {
+                    velocity: velocity,
+                    propellantRemaining: 1.0 - ((165 + t) / SATURN_V.stages[2].burnTime)
+                }
+            });
+            
+            // Guidance updates
+            this.guidanceSystem.updateTLIGuidance(t);
+        }
+        
+        // Shutdown engine
+        this.propulsion.shutdownEngines();
+        
+        logger.info("TLI burn complete");
+    }
+    
+    verifyTLI() {
+        logger.info("Verifying Trans-Lunar trajectory");
+        
+        // Calculate trajectory to Moon
+        const translunarTrajectory = this.navigationSystem.calculateTranslunarTrajectory();
+        
+        // Verify trajectory is correct
+        const trajectoryVerified = true; // Simulated
+        if (!trajectoryVerified) {
+            throw new Error("Trans-Lunar trajectory verification failed");
+        }
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Trans-Lunar Coast",
+            translunarTrajectory: translunarTrajectory
+        });
+        
+        logger.info("Vehicle on correct Trans-Lunar trajectory");
+    }
+    
+    // Helper methods for calculations
+    calculateAltitude(time) {
+        // Simplified altitude calculation
+        if (time < 60) {
+            return 0.5 * time * time; // Quadratic growth at start
+        } else if (time < 300) {
+            return 1800 + 3 * (time - 60); // Linear growth
+        } else {
+            return 2520 + 5 * (time - 300); // Faster linear growth
+        }
+    }
+    
+    calculateVelocity(time) {
+        // Simplified velocity calculation
+        let speed;
+        if (time < 60) {
+            speed = 20 * time; // Linear acceleration at start
+        } else if (time < 300) {
+            speed = 1200 + 15 * (time - 60); // Continued acceleration
+        } else {
+            speed = 4800 + 25 * (time - 300); // Faster acceleration
+        }
+        
+        // Return as a vector (primarily in Y direction)
+        return Vector3(0, 0, speed);
+    }
+    
+    calculatePosition(time) {
+        // Simplified position calculation
+        const altitude = this.calculateAltitude(time);
+        // Start at launch pad and move primarily upward
+        return Vector3(0, 0, altitude);
+    }
+    
+    calculateTLIVelocity(time) {
+        // Simplified TLI velocity calculation
+        const initialVelocity = 7793.0; // m/s (orbital velocity)
+        const finalVelocity = 10834.0; // m/s (TLI velocity)
+        const tliDuration = 335.0; // seconds
+        
+        const currentVelocity = initialVelocity + (finalVelocity - initialVelocity) * (time / tliDuration);
+        
+        // Return as a vector (primarily in X direction after TLI)
+        return Vector3(currentVelocity, 0, 0);
+    }
+    
+    handleLaunchAbort(error) {
+        logger.critical("LAUNCH ABORT: " + error.message);
+        
+        // Activate launch escape system
+        this.propulsion.activateLaunchEscapeSystem();
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Abort",
+            abortReason: error.message
+        });
+        
+        logger.info("Launch escape system activated");
+    }
+}
+
+/**
+ * Command and Service Module Controller
+ */
+class CSMController {
+    constructor() {
+        this.name = COMMAND_SERVICE_MODULE.name;
+        this.state = "Nominal";
+        this.docked = true;
+        this.navigationSystem = new Navigation.System();
+        this.guidanceSystem = new Guidance.Computer();
+        this.propulsionSystem = new Propulsion.Controller();
+        this.communicationSystem = new Communication.System("S-Band");
+        this.lifeSupportSystem = new LifeSupport.System();
+        
+        logger.info(`CSM ${this.name} controller initialized`);
+    }
+    
+    performTransposition() {
+        logger.info("Initiating CSM transposition and docking sequence");
+        
+        try {
+            // Separate from S-IVB
+            this.separateFromSIVB();
+            
+            // Turn around
+            this.turnAround();
+            
+            // Approach LM
+            this.approachLM();
+            
+            // Dock with LM
+            this.dockWithLM();
+            
+            // Extract LM
+            this.extractLM();
+            
+            logger.info("Transposition and docking completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("Transposition and docking failed: " + error.message);
+            return false;
+        }
+    }
+    
+    separateFromSIVB() {
+        logger.info("Separating CSM from S-IVB");
+        
+        // Fire separation pyros
+        this.propulsionSystem.fireSeparationPyros();
+        
+        // Fire RCS thrusters to move away
+        this.propulsionSystem.fireRCS("Backward", 3.0);
+        
+        // Verify separation
+        const separationVerified = true; // Simulated
+        if (!separationVerified) {
+            throw new Error("CSM separation from S-IVB failed");
+        }
+        
+        // Update state
+        this.docked = false;
+        
+        logger.info("CSM successfully separated from S-IVB");
+    }
+    
+    turnAround() {
+        logger.info("Turning CSM around to face LM");
+        
+        // Calculate required maneuver
+        const turnAroundQuaternion = Quaternion.fromEuler(0, 0, 180);
+        
+        // Execute maneuver
+        this.guidanceSystem.executeAttitudeChange(turnAroundQuaternion, 60);
+        
+        // Verify attitude
+        const attitudeVerified = true; // Simulated
+        if (!attitudeVerified) {
+            throw new Error("CSM turn-around maneuver failed");
+        }
+        
+        logger.info("CSM successfully turned around");
+    }
+    
+    approachLM() {
+        logger.info("Approaching Lunar Module");
+        
+        // Calculate approach trajectory
+        const approachTrajectory = this.navigationSystem.calculateDockingApproach();
+        
+        // Execute approach
+        this.guidanceSystem.followTrajectory(approachTrajectory);
+        
+        // Use RCS for fine control
+        this.propulsionSystem.fireRCS("Forward", 1.0);
+        
+        logger.info("CSM on approach to LM");
+    }
+    
+    dockWithLM() {
+        logger.info("Docking with Lunar Module");
+        
+        // Final approach
+        this.propulsionSystem.fireRCS("Forward", 0.1);
+        
+        // Simulate docking
+        const dockingSuccessful = true; // Simulated
+        if (!dockingSuccessful) {
+            throw new Error("Docking with LM failed");
+        }
+        
+        // Update state
+        this.docked = true;
+        
+        logger.info("CSM successfully docked with LM");
+    }
+    
+    extractLM() {
+        logger.info("Extracting Lunar Module from S-IVB");
+        
+        // Fire LM extraction pyros
+        this.propulsionSystem.fireLMExtractionPyros();
+        
+        // Back away from S-IVB
+        this.propulsionSystem.fireRCS("Backward", 2.0);
+        
+        // Verify extraction
+        const extractionVerified = true; // Simulated
+        if (!extractionVerified) {
+            throw new Error("LM extraction failed");
+        }
+        
+        logger.info("LM successfully extracted from S-IVB");
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Trans-Lunar Coast with LM",
+            lunarModuleState: "Extracted"
+        });
+    }
+    
+    performMidcourseCorrectionBurn(burnNumber) {
+        logger.info(`Preparing for midcourse correction burn ${burnNumber}`);
+        
+        try {
+            // Calculate correction
+            const correction = this.navigationSystem.calculateMidcourseCorrectionBurn();
+            
+            // Orient spacecraft
+            this.orientForBurn(correction.attitude);
+            
+            // Execute burn
+            this.executeBurn(correction.duration, correction.thrust);
+            
+            // Verify new trajectory
+            this.verifyTrajectory();
+            
+            logger.info(`Midcourse correction burn ${burnNumber} completed successfully`);
+            return true;
+        } catch (error) {
+            logger.critical(`Midcourse correction burn ${burnNumber} failed: ${error.message}`);
+            return false;
+        }
+    }
+    
+    orientForBurn(attitude) {
+        logger.info("Orienting spacecraft for burn");
+        
+        // Execute attitude change
+        this.guidanceSystem.executeAttitudeChange(attitude, 30);
+        
+        // Verify attitude
+        const attitudeVerified = true; // Simulated
+        if (!attitudeVerified) {
+            throw new Error("Failed to achieve burn attitude");
+        }
+        
+        logger.info("Spacecraft oriented for burn");
+    }
+    
+    executeBurn(duration, thrust) {
+        logger.info(`Executing burn: ${duration} seconds at ${thrust} thrust`);
+        
+        // Start engine
+        this.propulsionSystem.startMainEngine(thrust);
+        
+        // Simulate burn
+        for (let t = 0; t < duration; t += 1) {
+            // Update guidance
+            this.guidanceSystem.monitorBurn(t, duration);
+            
+            // In a real system, we would monitor engine parameters
+            // and make adjustments as needed
+        }
+        
+        // Shutdown engine
+        this.propulsionSystem.shutdownMainEngine();
+        
+        logger.info("Burn complete");
+    }
+    
+    verifyTrajectory() {
+        logger.info("Verifying post-burn trajectory");
+        
+        // Calculate new trajectory
+        const newTrajectory = this.navigationSystem.calculateCurrentTrajectory();
+        
+        // Verify trajectory is correct
+        const trajectoryVerified = true; // Simulated
+        if (!trajectoryVerified) {
+            throw new Error("Trajectory verification failed");
+        }
+        
+        // Update mission state with new trajectory
+        missionControl.updateMissionState({
+            translunarTrajectory: newTrajectory
+        });
+        
+        logger.info("New trajectory verified and accepted");
+    }
+    
+    performLunarOrbitInsertion() {
+        logger.info("Preparing for Lunar Orbit Insertion (LOI) burn");
+        
+        try {
+            // Calculate LOI burn parameters
+            const loiBurn = this.navigationSystem.calculateLOIBurn();
+            
+            // Orient spacecraft
+            this.orientForBurn(loiBurn.attitude);
+            
+            // Execute LOI burn
+            this.executeBurn(loiBurn.duration, loiBurn.thrust);
+            
+            // Verify lunar orbit
+            this.verifyLunarOrbit();
+            
+            logger.info("Lunar Orbit Insertion completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("LOI sequence failed: " + error.message);
+            return false;
+        }
+    }
+    
+    verifyLunarOrbit() {
+        logger.info("Verifying lunar orbit parameters");
+        
+        // Calculate orbital parameters
+        const lunarOrbit = this.navigationSystem.calculateCurrentOrbit("Moon");
+        
+        // Verify orbit is within acceptable parameters
+        const orbitVerified = true; // Simulated
+        if (!orbitVerified) {
+            throw new Error("Lunar orbit verification failed");
+        }
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Lunar Orbit",
+            lunarOrbit: lunarOrbit
+        });
+        
+        logger.info(`Successfully inserted into ${lunarOrbit.periapsis}x${lunarOrbit.apoapsis} km lunar orbit`);
+    }
+    
+    performTransEarthInjection() {
+        logger.info("Preparing for Trans-Earth Injection (TEI) burn");
+        
+        try {
+            // Calculate TEI burn parameters
+            const teiBurn = this.navigationSystem.calculateTEIBurn();
+            
+            // Orient spacecraft
+            this.orientForBurn(teiBurn.attitude);
+            
+            // Execute TEI burn
+            this.executeBurn(teiBurn.duration, teiBurn.thrust);
+            
+            // Verify trans-Earth trajectory
+            this.verifyTransEarthTrajectory();
+            
+            logger.info("Trans-Earth Injection completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("TEI sequence failed: " + error.message);
+            return false;
+        }
+    }
+    
+    verifyTransEarthTrajectory() {
+        logger.info("Verifying trans-Earth trajectory");
+        
+        // Calculate trajectory to Earth
+        const transEarthTrajectory = this.navigationSystem.calculateTransEarthTrajectory();
+        
+        // Verify trajectory is correct
+        const trajectoryVerified = true; // Simulated
+        if (!trajectoryVerified) {
+            throw new Error("Trans-Earth trajectory verification failed");
+        }
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Trans-Earth Coast",
+            transEarthTrajectory: transEarthTrajectory
+        });
+        
+        logger.info("Vehicle on correct trans-Earth trajectory");
+    }
+    
+    prepareForReentry() {
+        logger.info("Preparing for re-entry sequence");
+        
+        try {
+            // Separate from Service Module
+            this.separateFromSM();
+            
+            // Orient for re-entry
+            this.orientForReentry();
+            
+            // Calculate re-entry trajectory
+            const reentryTrajectory = this.navigationSystem.calculateReentryTrajectory();
+            
+            // Update mission state
+            missionControl.updateMissionState({
+                phase: "Re-entry",
+                reentryTrajectory: reentryTrajectory
+            });
+            
+            logger.info("Re-entry preparation completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("Re-entry preparation failed: " + error.message);
+            return false;
+        }
+    }
+    
+    separateFromSM() {
+        logger.info("Separating Command Module from Service Module");
+        
+        // Fire separation pyros
+        this.propulsionSystem.fireSMSeparationPyros();
+        
+        // Verify separation
+        const separationVerified = true; // Simulated
+        if (!separationVerified) {
+            throw new Error("CM-SM separation failed");
+        }
+        
+        logger.info("Command Module successfully separated from Service Module");
+    }
+    
+    orientForReentry() {
+        logger.info("Orienting Command Module for re-entry");
+        
+        // Calculate required attitude (heat shield forward)
+        const reentryAttitude = Quaternion.fromEuler(180, 0, 0);
+        
+        // Execute attitude change
+        this.guidanceSystem.executeAttitudeChange(reentryAttitude, 30);
+        
+        // Verify attitude
+        const attitudeVerified = true; // Simulated
+        if (!attitudeVerified) {
+            throw new Error("Failed to achieve re-entry attitude");
+        }
+        
+        logger.info("Command Module oriented for re-entry");
+    }
+    
+    performReentry() {
+        logger.info("Beginning re-entry sequence");
+        
+        try {
+            // Enter atmosphere
+            this.enterAtmosphere();
+            
+            // Deploy drogue chutes
+            this.deployDrogueChutes();
+            
+            // Deploy main chutes
+            this.deployMainChutes();
+            
+            // Splashdown
+            this.splashdown();
+            
+            logger.info("Re-entry and splashdown completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("Re-entry sequence failed: " + error.message);
+            return false;
+        }
+    }
+    
+    enterAtmosphere() {
+        logger.info("Entering Earth's atmosphere");
+        
+        // Simulate atmospheric entry
+        for (let t = 0; t < 120; t += 10) {
+            // Update telemetry
+            const altitude = 120000 - (t * 1000); // Simplified altitude calculation
+            const velocity = 11000 - (t * 80); // Simplified velocity calculation
+            
+            // Calculate g-forces and heating
+            const gForce = 3.0 + (t / 20.0) * (t < 60 ? 1 : (120 - t) / 60.0);
+            const heatShieldTemp = 1000 + (t * 25) * (t < 60 ? 1 : (120 - t) / 60.0);
+            
+            logger.info(`Re-entry: Alt: ${altitude.toFixed(1)} m, Vel: ${velocity.toFixed(1)} m/s, G: ${gForce.toFixed(1)}, Temp: ${heatShieldTemp.toFixed(1)} K`);
+            
+            // Update mission state
+            missionControl.updateMissionState({
+                telemetry: {
+                    altitude: altitude / 1000, // Convert to km
+                    velocity: Vector3(velocity, 0, 0),
+                    gForce: gForce,
+                    heatShieldTemp: heatShieldTemp
+                }
+            });
+            
+            // Check for blackout period
+            if (t >= 30 && t <= 90) {
+                logger.info("Communications blackout due to ionization");
+            }
+        }
+        
+        logger.info("Exited re-entry plasma phase");
+    }
+    
+    deployDrogueChutes() {
+        logger.info("Deploying drogue parachutes");
+        
+        // Simulate drogue deployment
+        const drogueDeployment = true; // Simulated
+        if (!drogueDeployment) {
+            throw new Error("Drogue parachute deployment failed");
+        }
+        
+        // Update telemetry
+        missionControl.updateMissionState({
+            telemetry: {
+                altitude: 7.0, // km
+                velocity: Vector3(100, 0, 0)
+            }
+        });
+        
+        logger.info("Drogue parachutes deployed successfully");
+    }
+    
+    deployMainChutes() {
+        logger.info("Deploying main parachutes");
+        
+        // Simulate main chute deployment
+        const mainDeployment = true; // Simulated
+        if (!mainDeployment) {
+            throw new Error("Main parachute deployment failed");
+        }
+        
+        // Update telemetry
+        missionControl.updateMissionState({
+            telemetry: {
+                altitude: 3.0, // km
+                velocity: Vector3(30, 0, 0)
+            }
+        });
+        
+        logger.info("Main parachutes deployed successfully");
+    }
+    
+    splashdown() {
+        logger.info("Splashdown!");
+        
+        // Calculate splashdown location
+        const splashdownLocation = Vector3(13.0, 169.0, 0.0); // Simplified coordinates
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Recovery",
+            telemetry: {
+                position: splashdownLocation,
+                velocity: Vector3(0, 0, 0),
+                altitude: 0
+            }
+        });
+        
+        logger.info(`Splashdown at coordinates: ${splashdownLocation.x}, ${splashdownLocation.y}`);
+        logger.info("USS Hornet recovery team en route");
+    }
+}
+
+/**
+ * Lunar Module Controller
+ */
+class LMController {
+    constructor() {
+        this.name = LUNAR_MODULE.name;
+        this.state = "Docked";
+        this.navigationSystem = new Navigation.System();
+        this.guidanceSystem = new Guidance.Computer();
+        this.propulsionSystem = new Propulsion.Controller();
+        this.communicationSystem = new Communication.System("S-Band");
+        this.lifeSupportSystem = new LifeSupport.System();
+        
+        logger.info(`LM ${this.name} controller initialized`);
+    }
+    
+    undockFromCSM() {
+        logger.info("Preparing for undocking from Command Module");
+        
+        try {
+            // Pressurize LM
+            this.pressurize();
+            
+            // Power up LM systems
+            this.powerUp();
+            
+            // Perform undocking
+            this.undock();
+            
+            // Separation maneuver
+            this.performSeparationManeuver();
+            
+            logger.info("Undocking completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("Undocking sequence failed: " + error.message);
+            return false;
+        }
+    }
+    
+    pressurize() {
+        logger.info("Pressurizing Lunar Module");
+        
+        // Simulate pressurization
+        this.lifeSupportSystem.pressurize();
+        
+        // Verify pressure
+        const pressureVerified = true; // Simulated
+        if (!pressureVerified) {
+            throw new Error("LM pressurization failed");
+        }
+        
+        logger.info("LM pressurized successfully");
+    }
+    
+    powerUp() {
+        logger.info("Powering up LM systems");
+        
+        // Power up sequence
+        this.guidanceSystem.powerUp();
+        this.navigationSystem.powerUp();
+        this.propulsionSystem.powerUp();
+        this.communicationSystem.powerUp();
+        
+        // Verify power
+        const powerVerified = true; // Simulated
+        if (!powerVerified) {
+            throw new Error("LM power-up failed");
+        }
+        
+        logger.info("LM systems powered up successfully");
+    }
+    
+    undock() {
+        logger.info("Undocking from Command Module");
+        
+        // Release docking latches
+        this.propulsionSystem.releaseDockingLatches();
+        
+        // Push away with light spring force
+        this.propulsionSystem.activateUndockingSprings();
+        
+        // Verify undocking
+        const undockingVerified = true; // Simulated
+        if (!undockingVerified) {
+            throw new Error("Undocking from CSM failed");
+        }
+        
+        // Update state
+        this.state = "Undocked";
+        
+        logger.info("LM successfully undocked from CSM");
+    }
+    
+    performSeparationManeuver() {
+        logger.info("Performing separation maneuver");
+        
+        // Fire RCS thrusters
+        this.propulsionSystem.fireRCS("Down", 2.0);
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Lunar Descent Preparation",
+            lunarModuleState: "Undocked"
+        });
+        
+        logger.info("Separation maneuver complete");
+    }
+    
+    performDescentOrbitInsertion() {
+        logger.info("Preparing for Descent Orbit Insertion (DOI) burn");
+        
+        try {
+            // Calculate DOI burn parameters
+            const doiBurn = this.navigationSystem.calculateDOIBurn();
+            
+            // Orient for burn
+            this.orientForBurn(doiBurn.attitude);
+            
+            // Execute DOI burn
+            this.executeBurn(doiBurn.duration, doiBurn.thrust);
+            
+            // Verify descent orbit
+            this.verifyDescentOrbit();
+            
+            logger.info("Descent Orbit Insertion completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("DOI sequence failed: " + error.message);
+            return false;
+        }
+    }
+    
+    orientForBurn(attitude) {
+        logger.info("Orienting LM for burn");
+        
+        // Execute attitude change
+        this.guidanceSystem.executeAttitudeChange(attitude, 30);
+        
+        // Verify attitude
+        const attitudeVerified = true; // Simulated
+        if (!attitudeVerified) {
+            throw new Error("Failed to achieve burn attitude");
+        }
+        
+        logger.info("LM oriented for burn");
+    }
+    
+    executeBurn(duration, thrust) {
+        logger.info(`Executing burn: ${duration} seconds at ${thrust} thrust`);
+        
+        // Start engine
+        this.propulsionSystem.startDescentEngine(thrust);
+        
+        // Simulate burn
+        for (let t = 0; t < duration; t += 1) {
+            // Update guidance
+            this.guidanceSystem.monitorBurn(t, duration);
+            
+            // In a real system, we would monitor engine parameters
+            // and make adjustments as needed
+        }
+        
+        // Shutdown engine
+        this.propulsionSystem.shutdownDescentEngine();
+        
+        logger.info("Burn complete");
+    }
+    
+    verifyDescentOrbit() {
+        logger.info("Verifying descent orbit parameters");
+        
+        // Calculate orbital parameters
+        const descentOrbit = this.navigationSystem.calculateCurrentOrbit("Moon");
+        
+        // Verify orbit is within acceptable parameters
+        const orbitVerified = true; // Simulated
+        if (!orbitVerified) {
+            throw new Error("Descent orbit verification failed");
+        }
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            lunarDescentTrajectory: descentOrbit
+        });
+        
+        logger.info(`Successfully inserted into ${descentOrbit.periapsis}x${descentOrbit.apoapsis} km descent orbit`);
+    }
+    
+    performPoweredDescent() {
+        logger.info("Initiating powered descent to lunar surface");
+        
+        try {
+            // Descent orbit coast
+            this.descentOrbitCoast();
+            
+            // Power descent initiation (PDI)
+            this.initiatePoweredDescent();
+            
+            // Braking phase
+            this.performBrakingPhase();
+            
+            // Approach phase
+            this.performApproachPhase();
+            
+            // Landing phase
+            this.performLandingPhase();
+            
+            // Touchdown
+            this.touchdown();
+            
+            logger.info("Lunar landing completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("Lunar descent sequence failed: " + error.message);
+            this.handleDescentAbort(error);
+            return false;
+        }
+    }
+    
+    descentOrbitCoast() {
+        logger.info("Coasting in descent orbit to PDI point");
+        
+        // Simulate coast phase
+        for (let t = 0; t < 60; t += 10) {
+            // Update position based on orbit
+            const position = this.navigationSystem.calculatePositionInOrbit(t);
+            
+            // Update mission state
+            missionControl.updateMissionState({
+                telemetry: {
+                    position: position,
+                    altitude: position.z
+                }
+            });
+        }
+        
+        logger.info("Approaching PDI point");
+    }
+    
+    initiatePoweredDescent() {
+        logger.info("Power Descent Initiation (PDI)");
+        
+        // Orient for descent
+        const descentAttitude = Quaternion.fromEuler(90, 0, 0);
+        this.guidanceSystem.executeAttitudeChange(descentAttitude, 30);
+        
+        // Start descent engine
+        this.propulsionSystem.startDescentEngine(1.0);
+        
+        logger.info("Descent engine ignition, burning at 100%");
+    }
+    
+    performBrakingPhase() {
+        logger.info("Braking phase");
+        
+        // Simulate braking phase
+        for (let t = 0; t < 390; t += 30) {
+            // Calculate altitude and velocity
+            const altitude = 15000 - (t * 30); // Simplified
+            const velocity = 1700 - (t * 4); // Simplified
+            
+            // Update mission state
+            missionControl.updateMissionState({
+                telemetry: {
+                    altitude: altitude / 1000, // Convert to km
+                    velocity: Vector3(velocity, 0, 0),
+                    propellantRemaining: 1.0 - (t / 800)
+                }
+            });
+            
+            // Guidance updates
+            this.guidanceSystem.updateDescentGuidance();
+            
+            // Throttle adjustments
+            if (t > 300) {
+                this.propulsionSystem.throttleDescentEngine(0.7);
+                logger.info("Throttling down to 70%");
+            }
+            
+            // Check for program alarms
+            if (t == 180) {
+                logger.warning("Program alarm 1202 - Executive overflow");
+                // Simulate the famous 1202 alarm from Apollo 11
+                // In a real system, we would handle this appropriately
+                logger.info("GUIDANCE: We're go on that alarm");
+            }
+        }
+        
+        logger.info("Braking phase complete");
+    }
+    
+    performApproachPhase() {
+        logger.info("Approach phase");
+        
+        // Pitch over to vertical
+        const approachAttitude = Quaternion.fromEuler(0, 0, 0);
+        this.guidanceSystem.executeAttitudeChange(approachAttitude, 20);
+        
+        // Simulate approach phase
+        for (let t = 0; t < 120; t += 20) {
+            // Calculate altitude and velocity
+            const altitude = 3000 - (t * 20); // Simplified
+            const velocity = 100 - (t * 0.5); // Simplified
+            
+            // Update mission state
+            missionControl.updateMissionState({
+                telemetry: {
+                    altitude: altitude / 1000, // Convert to km
+                    velocity: Vector3(velocity, 0, 0),
+                    propellantRemaining: 0.5 - (t / 300)
+                }
+            });
+            
+            // Guidance updates
+            this.guidanceSystem.updateDescentGuidance();
+            
+            // Throttle adjustments
+            this.propulsionSystem.throttleDescentEngine(0.5);
+            
+            // Check for program alarms
+            if (t == 60) {
+                logger.warning("Program alarm 1201 - Executive overflow");
+                // Another famous alarm from Apollo 11
+                logger.info("GUIDANCE: We're go on that alarm");
+            }
+        }
+        
+        logger.info("Approach phase complete");
+    }
+    
+    performLandingPhase() {
+        logger.info("Landing phase");
+        
+        // Simulate landing phase
+        for (let t = 0; t < 60; t += 10) {
+            // Calculate altitude and velocity
+            const altitude = 100 - (t * 1.5); // Simplified
+            const velocity = 10 - (t * 0.15); // Simplified
+            
+            // Update mission state
+            missionControl.updateMissionState({
+                telemetry: {
+                    altitude: altitude / 1000, // Convert to km
+                    velocity: Vector3(velocity, 0, 0),
+                    propellantRemaining: 0.2 - (t / 400)
+                }
+            });
+            
+            // Guidance updates
+            this.guidanceSystem.updateDescentGuidance();
+            
+            // Manual control for final descent
+            if (t >= 30) {
+                logger.info("Commander taking manual control for landing");
+                this.guidanceSystem.setMode("Manual");
+            }
+            
+            // Dust observations
+            if (t >= 40) {
+                logger.info("Lunar dust being kicked up by descent engine");
+            }
+        }
+        
+        logger.info("Landing phase complete");
+    }
+    
+    touchdown() {
+        logger.info("Contact light! Lunar touchdown achieved");
+        
+        // Shutdown engine
+        this.propulsionSystem.shutdownDescentEngine();
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Lunar Surface Operations",
+            lunarModuleState: "Landed",
+            telemetry: {
+                altitude: 0,
+                velocity: Vector3(0, 0, 0)
+            }
+        });
+        
+        // Famous quote
+        logger.info("Houston, Tranquility Base here. The Eagle has landed.");
+    }
+    
+    handleDescentAbort(error) {
+        logger.critical("DESCENT ABORT: " + error.message);
+        
+        // Activate abort sequence
+        this.propulsionSystem.abortDescent();
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Descent Abort",
+            abortReason: error.message
+        });
+        
+        logger.info("Descent abort sequence activated");
+    }
+    
+    performLunarSurfaceOperations() {
+        logger.info("Beginning lunar surface operations");
+        
+        try {
+            // Post-landing checklist
+            this.performPostLandingChecklist();
+            
+            // EVA preparation
+            this.prepareForEVA();
+            
+            // First EVA
+            this.performFirstEVA();
+            
+            // Rest period
+            this.performRestPeriod();
+            
+            // Second EVA
+            this.performSecondEVA();
+            
+            // Prepare for ascent
+            this.prepareForAscent();
+            
+            logger.info("Lunar surface operations completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("Lunar surface operations error: " + error.message);
+            return false;
+        }
+    }
+    
+    performPostLandingChecklist() {
+        logger.info("Performing post-landing checklist");
+        
+        // Verify systems
+        this.guidanceSystem.verify();
+        this.navigationSystem.verify();
+        this.propulsionSystem.verify();
+        this.communicationSystem.verify();
+        this.lifeSupportSystem.verify();
+        
+        // Power down unnecessary systems
+        this.propulsionSystem.powerDownDescentSystems();
+        
+        logger.info("Post-landing checklist complete");
+    }
+    
+    prepareForEVA() {
+        logger.info("Preparing for EVA");
+        
+        // Depressurize cabin
+        this.lifeSupportSystem.depressurizeCabin();
+        
+        // Prepare equipment
+        logger.info("Preparing EVA equipment");
+        
+        logger.info("EVA preparation complete");
+    }
+    
+    performFirstEVA() {
+        logger.info("Beginning first EVA");
+        
+        // Open hatch
+        logger.info("Opening LM hatch");
+        
+        // Commander descends to surface
+        logger.info("Commander descending ladder to lunar surface");
+        
+        // First step
+        logger.info("That's one small step for a man, one giant leap for mankind");
+        
+        // Deploy equipment
+        logger.info("Deploying EASEP scientific equipment");
+        logger.info("Deploying S-Band antenna");
+        logger.info("Deploying American flag");
+        
+        // Collect samples
+        logger.info("Collecting contingency sample");
+        logger.info("Performing geological survey");
+        
+        // LMP descends to surface
+        logger.info("LMP descending to lunar surface");
+        
+        // Return to LM
+        logger.info("Astronauts returning to LM");
+        logger.info("Closing LM hatch");
+        
+        // Repressurize cabin
+        this.lifeSupportSystem.pressurizeCabin();
+        
+        logger.info("First EVA complete - Duration: 2 hours 31 minutes");
+    }
+    
+    performRestPeriod() {
+        logger.info("Beginning rest period");
+        
+        // Power down systems
+        this.guidanceSystem.setMode("Standby");
+        this.communicationSystem.setMode("Periodic");
+        
+        // Rest for 8 hours
+        logger.info("Crew rest period in progress");
+        
+        // Power up systems
+        this.guidanceSystem.setMode("Active");
+        this.communicationSystem.setMode("Continuous");
+        
+        logger.info("Rest period complete");
+    }
+    
+    performSecondEVA() {
+        logger.info("Beginning second EVA");
+        
+        // Depressurize cabin
+        this.lifeSupportSystem.depressurizeCabin();
+        
+        // Open hatch
+        logger.info("Opening LM hatch");
+        
+        // Astronauts descend to surface
+        logger.info("Astronauts descending to lunar surface");
+        
+        // Collect samples
+        logger.info("Collecting core samples");
+        logger.info("Collecting rock samples");
+        logger.info("Performing extended geological survey");
+        
+        // Return to LM
+        logger.info("Astronauts returning to LM");
+        logger.info("Transferring samples to LM");
+        logger.info("Closing LM hatch");
+        
+        // Repressurize cabin
+        this.lifeSupportSystem.pressurizeCabin();
+        
+        logger.info("Second EVA complete - Duration: 3 hours 15 minutes");
+    }
+    
+    prepareForAscent() {
+        logger.info("Preparing for lunar ascent");
+        
+        // Jettison equipment
+        logger.info("Jettisoning unnecessary equipment");
+        
+        // Power up ascent systems
+        this.propulsionSystem.powerUpAscentSystems();
+        this.guidanceSystem.setMode("Ascent");
+        
+        // Verify ascent systems
+        const ascentSystemsVerified = true; // Simulated
+        if (!ascentSystemsVerified) {
+            throw new Error("Ascent systems verification failed");
+        }
+        
+        logger.info("Ascent preparation complete");
+    }
+    
+    performLunarAscent() {
+        logger.info("Initiating lunar ascent sequence");
+        
+        try {
+            // Final ascent preparation
+            this.finalAscentPreparation();
+            
+            // Ignition and liftoff
+            this.ascentIgnition();
+            
+            // Powered ascent
+            this.poweredAscent();
+            
+            // Orbit insertion
+            this.ascentOrbitInsertion();
+            
+            logger.info("Lunar ascent completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("Lunar ascent sequence failed: " + error.message);
+            return false;
+        }
+    }
+    
+    finalAscentPreparation() {
+        logger.info("Final ascent preparation");
+        
+        // Set guidance for ascent
+        this.guidanceSystem.setAscentTargets();
+        
+        // Pressurize ascent propulsion system
+        this.propulsionSystem.pressurizeAscentPropellant();
+        
+        // Arm ascent engine
+        this.propulsionSystem.armAscentEngine();
+        
+        logger.info("Final ascent preparation complete");
+    }
+    
+    ascentIgnition() {
+        logger.info("Ascent engine ignition");
+        
+        // Fire pyros to separate stages
+        this.propulsionSystem.fireAscentStageSeparation();
+        
+        // Start ascent engine
+        this.propulsionSystem.startAscentEngine();
+        
+        // Verify ignition
+        const ignitionVerified = true; // Simulated
+        if (!ignitionVerified) {
+            throw new Error("Ascent engine ignition failed");
+        }
+        
+        logger.info("Liftoff from the Moon!");
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Lunar Ascent",
+            lunarModuleState: "Ascending"
+        });
+    }
+    
+    poweredAscent() {
+        logger.info("Powered ascent in progress");
+        
+        // Simulate powered ascent
+        for (let t = 0; t < 420; t += 30) {
+            // Calculate altitude and velocity
+            const altitude = t * 40; // Simplified
+            const velocity = t * 5; // Simplified
+            
+            // Update mission state
+            missionControl.updateMissionState({
+                telemetry: {
+                    altitude: altitude / 1000, // Convert to km
+                    velocity: Vector3(velocity, 0, 0),
+                    propellantRemaining: 1.0 - (t / 500)
+                }
+            });
+            
+            // Guidance updates
+            this.guidanceSystem.updateAscentGuidance();
+            
+            // Pitch over gradually
+            if (t == 60) {
+                logger.info("Beginning pitch-over maneuver");
+                const pitchOverAttitude = Quaternion.fromEuler(45, 0, 0);
+                this.guidanceSystem.executeAttitudeChange(pitchOverAttitude, 15);
+            }
+            
+            if (t == 180) {
+                logger.info("Continuing pitch-over");
+                const pitchOverAttitude = Quaternion.fromEuler(20, 0, 0);
+                this.guidanceSystem.executeAttitudeChange(pitchOverAttitude, 15);
+            }
+        }
+        
+        logger.info("Powered ascent complete");
+    }
+    
+    ascentOrbitInsertion() {
+        logger.info("Ascent orbit insertion");
+        
+        // Shutdown ascent engine
+        this.propulsionSystem.shutdownAscentEngine();
+        
+        // Calculate orbital parameters
+        const ascentOrbit = this.navigationSystem.calculateCurrentOrbit("Moon");
+        
+        // Verify orbit is within acceptable parameters
+        const orbitVerified = true; // Simulated
+        if (!orbitVerified) {
+            throw new Error("Ascent orbit verification failed");
+        }
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Lunar Orbit Rendezvous",
+            lunarAscentTrajectory: ascentOrbit,
+            telemetry: {
+                altitude: ascentOrbit.periapsis,
+                velocity: Vector3(1600, 0, 0)
+            }
+        });
+        
+        logger.info(`Successfully inserted into ${ascentOrbit.periapsis}x${ascentOrbit.apoapsis} km lunar orbit`);
+    }
+    
+    performRendezvousAndDocking() {
+        logger.info("Initiating rendezvous and docking sequence");
+        
+        try {
+            // Coelliptic sequence
+            this.performCoellipticSequence();
+            
+            // Terminal phase initiation
+            this.performTerminalPhaseInitiation();
+            
+            // Terminal phase final
+            this.performTerminalPhaseFinal();
+            
+            // Docking
+            this.performDocking();
+            
+            logger.info("Rendezvous and docking completed successfully");
+            return true;
+        } catch (error) {
+            logger.critical("Rendezvous and docking sequence failed: " + error.message);
+            return false;
+        }
+    }
+    
+    performCoellipticSequence() {
+        logger.info("Performing coelliptic sequence (CSI)");
+        
+        // Calculate CSI burn
+        const csiBurn = this.navigationSystem.calculateCSIBurn();
+        
+        // Orient for burn
+        this.orientForBurn(csiBurn.attitude);
+        
+        // Execute CSI burn
+        this.executeBurn(csiBurn.duration, csiBurn.thrust);
+        
+        // Verify new orbit
+        const csiOrbit = this.navigationSystem.calculateCurrentOrbit("Moon");
+        
+        logger.info(`CSI burn complete. New orbit: ${csiOrbit.periapsis}x${csiOrbit.apoapsis} km`);
+    }
+    
+    performTerminalPhaseInitiation() {
+        logger.info("Performing terminal phase initiation (TPI)");
+        
+        // Calculate TPI burn
+        const tpiBurn = this.navigationSystem.calculateTPIBurn();
+        
+        // Orient for burn
+        this.orientForBurn(tpiBurn.attitude);
+        
+        // Execute TPI burn
+        this.executeBurn(tpiBurn.duration, tpiBurn.thrust);
+        
+        // Verify trajectory
+        const tpiTrajectory = this.navigationSystem.calculateCurrentTrajectory();
+        
+        logger.info("TPI burn complete. On intercept trajectory with CSM");
+    }
+    
+    performTerminalPhaseFinal() {
+        logger.info("Performing terminal phase final approach");
+        
+        // Calculate midcourse corrections
+        for (let i = 1; i <= 2; i++) {
+            const mcBurn = this.navigationSystem.calculateMidcourseBurn(i);
+            
+            // Execute midcourse correction
+            this.executeBurn(mcBurn.duration, mcBurn.thrust);
+            
+            logger.info(`Midcourse correction ${i} complete`);
+        }
+        
+        // Braking gates
+        for (let range = 1000; range > 50; range /= 2) {
+            logger.info(`Range to CSM: ${range} meters, closing rate reducing`);
+            this.propulsionSystem.fireRCS("Backward", 0.5);
+        }
+        
+        logger.info("Terminal phase final approach complete");
+    }
+    
+    performDocking() {
+        logger.info("Performing docking with CSM");
+        
+        // Final approach
+        logger.info("Range: 50 meters, closing at 0.5 m/s");
+        this.propulsionSystem.fireRCS("Forward", 0.1);
+        
+        // Docking contact
+        logger.info("Contact! Docking probe engaged");
+        
+        // Retract docking probe
+        logger.info("Retracting docking probe");
+        
+        // Hard dock achieved
+        logger.info("Hard dock achieved");
+        
+        // Pressurize tunnel
+        logger.info("Pressurizing docking tunnel");
+        this.lifeSupportSystem.pressurizeTunnel();
+        
+        // Update mission state
+        missionControl.updateMissionState({
+            phase: "Docked in Lunar Orbit",
+            lunarModuleState: "Docked"
+        });
+        
+        logger.info("Rendezvous and docking complete");
+    }
+}
+
+/**
+ * Main mission sequence
+ */
+function runApollo11Mission() {
+    logger.info("=== APOLLO 11 MISSION SEQUENCE INITIATED ===");
+    
+    // Initialize mission control
+    const missionControl = new MissionControl();
+    
+    // Initialize vehicle controllers
+    const saturnV = new SaturnVController();
+    const csm = new CSMController();
+    const lm = new LMController();
+    
+    // Set mission start time
+    missionControl.updateMissionState({
+        time: LAUNCH_DATE,
+        phase: "Pre-launch"
+    });
+    
+    // Launch sequence
+    logger.info("=== LAUNCH SEQUENCE ===");
+    if (!saturnV.performLaunch()) {
+        return false;
+    }
+    
+    // Trans-lunar injection
+    logger.info("=== TRANS-LUNAR INJECTION ===");
+    if (!saturnV.performTranslunarInjection()) {
+        return false;
+    }
+    
+    // CSM/LM transposition and docking
+    logger.info("=== TRANSPOSITION AND DOCKING ===");
+    if (!csm.performTransposition()) {
+        return false;
+    }
+    
+    // Midcourse corrections
+    logger.info("=== MIDCOURSE CORRECTIONS ===");
+    for (let i = 1; i <= 3; i++) {
+        if (!csm.performMidcourseCorrectionBurn(i)) {
+            logger.warning(`Midcourse correction ${i} failed, continuing mission`);
+        }
+    }
+    
+    // Lunar orbit insertion
+    logger.info("=== LUNAR ORBIT INSERTION ===");
+    if (!csm.performLunarOrbitInsertion()) {
+        return false;
+    }
+    
+    // LM checkout
+    logger.info("=== LM CHECKOUT ===");
+    // Simulate LM systems check
+    
+    // LM undocking
+    logger.info("=== LM UNDOCKING ===");
+    if (!lm.undockFromCSM()) {
+        return false;
+    }
+    
+    // Descent orbit insertion
+    logger.info("=== DESCENT ORBIT INSERTION ===");
+    if (!lm.performDescentOrbitInsertion()) {
+        return false;
+    }
+    
+    // Powered descent
+    logger.info("=== POWERED DESCENT ===");
+    if (!lm.performPoweredDescent()) {
+        return false;
+    }
+    
+    // Lunar surface operations
+    logger.info("=== LUNAR SURFACE OPERATIONS ===");
+    if (!lm.performLunarSurfaceOperations()) {
+        logger.warning("Lunar surface operations had issues, continuing mission");
+    }
+    
+    // Lunar ascent
+    logger.info("=== LUNAR ASCENT ===");
+    if (!lm.performLunarAscent()) {
+        return false;
+    }
+    
+    // Rendezvous and docking
+    logger.info("=== RENDEZVOUS AND DOCKING ===");
+    if (!lm.performRendezvousAndDocking()) {
+        return false;
+    }
+    
+    // LM jettison
+    logger.info("=== LM JETTISON ===");
+    // Simulate LM jettison
+    
+    // Trans-Earth injection
+    logger.info("=== TRANS-EARTH INJECTION ===");
+    if (!csm.performTransEarthInjection()) {
+        return false;
+    }
+    
+    // Midcourse corrections
+    logger.info("=== TRANS-EARTH MIDCOURSE CORRECTIONS ===");
+    for (let i = 4; i <= 5; i++) {
+        if (!csm.performMidcourseCorrectionBurn(i)) {
+            logger.warning(`Midcourse correction ${i} failed, continuing mission`);
+        }
+    }
+    
+    // Re-entry preparation
+    logger.info("=== RE-ENTRY PREPARATION ===");
+    if (!csm.prepareForReentry()) {
+        return false;
+    }
+    
+    // Re-entry and splashdown
+    logger.info("=== RE-ENTRY AND SPLASHDOWN ===");
+    if (!csm.performReentry()) {
+        return false;
+    }
+    
+    // Mission complete
+    logger.info("=== APOLLO 11 MISSION SUCCESSFULLY COMPLETED ===");
+    return true;
+}
+
+// Execute the mission
+runApollo11Mission();

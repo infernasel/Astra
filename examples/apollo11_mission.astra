@@ -2,22 +2,99 @@
  * ASTRA Programming Language
  * Apollo 11 Mission Control Simulation
  * 
- * This example demonstrates a sophisticated mission control system
+ * This example demonstrates a comprehensive mission control system
  * for the Apollo 11 lunar landing mission, showcasing ASTRA's capabilities
- * for aerospace applications, concurrent task management, and real-time control.
+ * for aerospace applications, concurrent task management, real-time control,
+ * fault tolerance, and advanced mathematical modeling.
+ * 
+ * The simulation includes:
+ * - Complete mission timeline from launch to splashdown
+ * - Detailed physical models of all spacecraft components
+ * - Realistic orbital mechanics and trajectory calculations
+ * - Comprehensive error detection and recovery systems
+ * - Simulated telemetry and communication systems
+ * - Life support and environmental control systems
+ * - Guidance, navigation, and control algorithms
+ * - Fuel management and optimization
+ * - Lunar surface operations
+ * - Rendezvous and docking procedures
+ * 
+ * This code represents a sophisticated example of what can be achieved
+ * with the ASTRA programming language in aerospace applications.
  */
 
 // Import required modules
-import aerospace.navigation;
-import aerospace.propulsion;
-import aerospace.telemetry;
-import math.vector;
-import math.quaternion;
-import system.time;
-import system.concurrent;
+import Aerospace.Navigation;
+import Aerospace.Propulsion;
+import Aerospace.Guidance;
+import Aerospace.Telemetry;
+import Aerospace.LifeSupport;
+import Aerospace.Communication;
+import Aerospace.PowerSystems;
+import Aerospace.ThermalControl;
+import Aerospace.StructuralAnalysis;
+import Aerospace.FaultDetection;
+import Aerospace.MissionPlanning;
+import Aerospace.TrajectoryOptimization;
+import Aerospace.AttitudeControl;
+import Aerospace.OrbitDetermination;
+import Aerospace.Rendezvous;
+import Aerospace.Docking;
+import Aerospace.LunarOperations;
+import Aerospace.Reentry;
+import Aerospace.Recovery;
+import Math.Vector;
+import Math.Matrix;
+import Math.Quaternion;
+import Math.Orbital;
+import Math.Statistics;
+import Math.Interpolation;
+import Math.Integration;
+import Math.Optimization;
+import Math.Filtering;
+import Math.Transforms;
+import Physics.Mechanics;
+import Physics.Thermodynamics;
+import Physics.FluidDynamics;
+import Physics.Electromagnetism;
+import Physics.Relativity;
+import Physics.QuantumEffects;
+import System.Time;
+import System.Logging;
+import System.ErrorHandling;
+import System.Concurrency;
+import System.Memory;
+import System.FileIO;
+import System.Network;
+import System.Security;
+import System.Visualization;
+import System.Simulation;
+import System.Hardware;
+import System.Diagnostics;
+import System.Profiling;
+import System.Configuration;
+import System.Internationalization;
+import System.UnitConversion;
 
 // Mission constants
-const EARTH_RADIUS = 6371.0;  // km
+const MISSION_NAME = "Apollo 11";
+const MISSION_ID = "AS-506";
+const LAUNCH_DATE = "1969-07-16T13:32:00Z";
+const EARTH_RADIUS = 6371.0; // km
+const EARTH_MU = 3.986004418e14; // m^3/s^2
+const MOON_RADIUS = 1737.1; // km
+const MOON_MU = 4.9048695e12; // m^3/s^2
+const EARTH_MOON_DISTANCE = 384400.0; // km
+const EARTH_ROTATION_RATE = 7.2921159e-5; // rad/s
+const MOON_ROTATION_RATE = 2.6617073e-6; // rad/s
+const LUNAR_ORBIT_ALTITUDE = 110.0; // km
+const LANDING_SITE = Vector3(0.67408, 23.47297, 0.0); // Mare Tranquillitatis coordinates
+const MISSION_DURATION = 195.0; // hours
+const LUNAR_STAY_TIME = 21.6; // hours
+const REENTRY_VELOCITY = 11000.0; // m/s
+const REENTRY_ANGLE = -6.5; // degrees
+const PARACHUTE_DEPLOY_ALTITUDE = 3000.0; // m
+const SPLASHDOWN_LOCATION = Vector3(13.063, -169.15, 0.0); // Pacific Ocean coordinates
 const MOON_RADIUS = 1737.4;   // km
 const MOON_DISTANCE = 384400; // km
 const LUNAR_GRAVITY = 1.62;   // m/s²
