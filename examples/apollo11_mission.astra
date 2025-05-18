@@ -1,0 +1,661 @@
+/**
+ * ASTRA Programming Language
+ * Apollo 11 Mission Control Simulation
+ * 
+ * This example demonstrates a sophisticated mission control system
+ * for the Apollo 11 lunar landing mission, showcasing ASTRA's capabilities
+ * for aerospace applications, concurrent task management, and real-time control.
+ */
+
+// Import required modules
+import aerospace.navigation;
+import aerospace.propulsion;
+import aerospace.telemetry;
+import math.vector;
+import math.quaternion;
+import system.time;
+import system.concurrent;
+
+// Mission constants
+const EARTH_RADIUS = 6371.0;  // km
+const MOON_RADIUS = 1737.4;   // km
+const MOON_DISTANCE = 384400; // km
+const LUNAR_GRAVITY = 1.62;   // m/s²
+const EARTH_GRAVITY = 9.81;   // m/s²
+const LUNAR_ORBIT_ALTITUDE = 110.0; // km
+const LANDING_SITE = Vector3(0.67408, 23.47297, 0); // Mare Tranquillitatis coordinates
+
+// Mission stages
+enum MissionStage {
+    LAUNCH,
+    EARTH_ORBIT,
+    TRANS_LUNAR_INJECTION,
+    LUNAR_ORBIT_INSERTION,
+    DESCENT_ORBIT_INSERTION,
+    POWERED_DESCENT,
+    LANDING,
+    SURFACE_OPERATIONS,
+    ASCENT,
+    TRANS_EARTH_INJECTION,
+    EARTH_REENTRY,
+    SPLASHDOWN
+}
+
+// Spacecraft components
+class CommandModule {
+    private:
+        string name = "Columbia";
+        Vector3 position;
+        Vector3 velocity;
+        Quaternion orientation;
+        double fuelRemaining = 100.0; // percent
+        bool systemsNominal = true;
+        
+    public:
+        CommandModule() {
+            log("Command Module Columbia initialized");
+        }
+        
+        void setPosition(Vector3 pos) {
+            position = pos;
+        }
+        
+        Vector3 getPosition() {
+            return position;
+        }
+        
+        void setVelocity(Vector3 vel) {
+            velocity = vel;
+        }
+        
+        Vector3 getVelocity() {
+            return velocity;
+        }
+        
+        void setOrientation(Quaternion orient) {
+            orientation = orient;
+        }
+        
+        Quaternion getOrientation() {
+            return orientation;
+        }
+        
+        void consumeFuel(double amount) {
+            fuelRemaining -= amount;
+            if (fuelRemaining < 0) fuelRemaining = 0;
+        }
+        
+        double getFuelRemaining() {
+            return fuelRemaining;
+        }
+        
+        bool checkSystems() {
+            // Simulate system checks
+            return systemsNominal;
+        }
+        
+        void performReentry(double entryAngle) {
+            log("Command Module performing reentry at angle: " + entryAngle + " degrees");
+            // Simulate heat shield temperature
+            for (double alt = 120.0; alt > 10.0; alt -= 5.0) {
+                double temp = 1000 + (25 - abs(entryAngle - 6.5)) * 200 * (1 - alt/120.0);
+                log("Altitude: " + alt + " km, Heat shield temperature: " + temp + " °C");
+                sleep(0.5);
+            }
+            log("Reentry complete, deploying parachutes");
+        }
+    }
+
+class LunarModule {
+    private:
+        string name = "Eagle";
+        Vector3 position;
+        Vector3 velocity;
+        Quaternion orientation;
+        double descentFuel = 100.0; // percent
+        double ascentFuel = 100.0;  // percent
+        bool landingRadarActive = false;
+        
+    public:
+        LunarModule() {
+            log("Lunar Module Eagle initialized");
+        }
+        
+        void setPosition(Vector3 pos) {
+            position = pos;
+        }
+        
+        Vector3 getPosition() {
+            return position;
+        }
+        
+        void setVelocity(Vector3 vel) {
+            velocity = vel;
+        }
+        
+        Vector3 getVelocity() {
+            return velocity;
+        }
+        
+        void setOrientation(Quaternion orient) {
+            orientation = orient;
+        }
+        
+        Quaternion getOrientation() {
+            return orientation;
+        }
+        
+        void consumeDescentFuel(double amount) {
+            descentFuel -= amount;
+            if (descentFuel < 0) descentFuel = 0;
+        }
+        
+        void consumeAscentFuel(double amount) {
+            ascentFuel -= amount;
+            if (ascentFuel < 0) ascentFuel = 0;
+        }
+        
+        double getDescentFuelRemaining() {
+            return descentFuel;
+        }
+        
+        double getAscentFuelRemaining() {
+            return ascentFuel;
+        }
+        
+        void activateLandingRadar() {
+            landingRadarActive = true;
+            log("Landing radar activated");
+        }
+        
+        bool isLandingRadarActive() {
+            return landingRadarActive;
+        }
+        
+        double getAltitude(Vector3 surfacePosition) {
+            return (position - surfacePosition).length() - MOON_RADIUS;
+        }
+        
+        void performPoweredDescent(Vector3 targetSite) {
+            log("Beginning powered descent to landing site");
+            
+            // Initial conditions
+            double altitude = getAltitude(targetSite);
+            double descentRate = -10.0; // m/s
+            double horizontalVelocity = velocity.length();
+            
+            // PID controller parameters
+            double kp = 0.5;
+            double ki = 0.1;
+            double kd = 0.3;
+            double errorSum = 0;
+            double lastError = 0;
+            
+            // Target descent profile
+            while (altitude > 0.1) {
+                // Calculate desired descent rate based on altitude
+                double desiredDescentRate;
+                if (altitude > 10.0) {
+                    desiredDescentRate = -5.0;
+                } else if (altitude > 5.0) {
+                    desiredDescentRate = -2.0;
+                } else {
+                    desiredDescentRate = -0.5;
+                }
+                
+                // PID control for descent rate
+                double error = desiredDescentRate - descentRate;
+                errorSum += error;
+                double derivative = error - lastError;
+                double thrustAdjustment = kp * error + ki * errorSum + kd * derivative;
+                lastError = error;
+                
+                // Apply thrust
+                double thrustPercent = 50.0 + thrustAdjustment;
+                thrustPercent = max(10.0, min(thrustPercent, 100.0));
+                
+                // Update state
+                double fuelConsumed = thrustPercent * 0.05;
+                consumeDescentFuel(fuelConsumed);
+                
+                // Update velocity and position
+                descentRate += (thrustPercent/50.0 - 1.0) * LUNAR_GRAVITY * 0.1;
+                horizontalVelocity *= 0.95; // Simulate horizontal braking
+                altitude += descentRate * 0.1;
+                
+                // Log status
+                log("Altitude: " + altitude + " m, Descent rate: " + descentRate + 
+                    " m/s, Horizontal velocity: " + horizontalVelocity + 
+                    " m/s, Thrust: " + thrustPercent + "%, Fuel: " + descentFuel + "%");
+                
+                // Check for abort conditions
+                if (descentFuel < 5.0) {
+                    log("WARNING: Low fuel level!");
+                }
+                
+                sleep(0.1);
+            }
+            
+            log("Touchdown! The Eagle has landed.");
+        }
+        
+        void performAscentStage() {
+            log("Initiating ascent stage");
+            
+            double altitude = 0.0;
+            double ascentRate = 0.0;
+            double targetOrbitAltitude = 50.0; // km
+            
+            while (altitude < targetOrbitAltitude) {
+                // Calculate thrust based on altitude
+                double thrustPercent;
+                if (altitude < 10.0) {
+                    thrustPercent = 100.0;
+                } else if (altitude < 25.0) {
+                    thrustPercent = 80.0;
+                } else {
+                    thrustPercent = 60.0;
+                }
+                
+                // Update state
+                double fuelConsumed = thrustPercent * 0.1;
+                consumeAscentFuel(fuelConsumed);
+                
+                // Update velocity and position
+                ascentRate += (thrustPercent/40.0 - LUNAR_GRAVITY/10.0) * 0.1;
+                altitude += ascentRate * 0.1;
+                
+                // Log status
+                log("Altitude: " + altitude + " km, Ascent rate: " + ascentRate + 
+                    " m/s, Thrust: " + thrustPercent + "%, Fuel: " + ascentFuel + "%");
+                
+                sleep(0.1);
+            }
+            
+            log("Ascent complete, in lunar orbit");
+        }
+    }
+
+class SaturnV {
+    private:
+        CommandModule cm;
+        LunarModule lm;
+        double s1FuelRemaining = 100.0; // First stage
+        double s2FuelRemaining = 100.0; // Second stage
+        double s3FuelRemaining = 100.0; // Third stage
+        Vector3 position = Vector3(0, 0, EARTH_RADIUS);
+        Vector3 velocity = Vector3(0, 0, 0);
+        Quaternion orientation = Quaternion.fromEuler(0, 0, 0);
+        
+    public:
+        SaturnV(CommandModule command, LunarModule lunar) {
+            cm = command;
+            lm = lunar;
+            log("Saturn V rocket initialized with Command Module and Lunar Module");
+        }
+        
+        void launchSequence() {
+            log("Initiating launch sequence");
+            log("T-10 seconds and counting...");
+            
+            for (int i = 10; i > 0; i--) {
+                log("T-" + i);
+                sleep(1);
+            }
+            
+            log("Ignition sequence start");
+            log("All engines running");
+            log("Liftoff! We have liftoff!");
+            
+            // First stage burn
+            double altitude = 0.0;
+            double velocity = 0.0;
+            double acceleration = 0.0;
+            double maxQ = 0.0;
+            
+            log("First stage burn");
+            while (s1FuelRemaining > 0 && altitude < 68.0) {
+                // Simulate rocket physics
+                double thrust = 35000.0; // kN
+                double mass = 2800.0 * (s1FuelRemaining/100.0) + 130.0;
+                double drag = 0.5 * velocity * velocity * (1.0 - min(1.0, altitude/100.0));
+                
+                acceleration = thrust / mass - EARTH_GRAVITY - drag / mass;
+                velocity += acceleration * 0.1;
+                altitude += velocity * 0.1;
+                
+                // Calculate dynamic pressure (Q)
+                double dynamicPressure = 0.5 * (1.0 - min(1.0, altitude/100.0)) * velocity * velocity;
+                maxQ = max(maxQ, dynamicPressure);
+                
+                // Consume fuel
+                s1FuelRemaining -= 2.0;
+                
+                // Log status
+                log("Altitude: " + altitude + " km, Velocity: " + velocity + 
+                    " m/s, Acceleration: " + acceleration + " m/s², Fuel: " + s1FuelRemaining + "%");
+                
+                if (altitude > 30.0 && altitude < 40.0) {
+                    log("Maximum dynamic pressure (Max Q) reached: " + dynamicPressure);
+                }
+                
+                sleep(0.1);
+            }
+            
+            log("First stage separation");
+            sleep(1);
+            
+            // Second stage burn
+            log("Second stage ignition");
+            while (s2FuelRemaining > 0 && altitude < 185.0) {
+                // Simulate rocket physics
+                double thrust = 5000.0; // kN
+                double mass = 480.0 * (s2FuelRemaining/100.0) + 80.0;
+                double drag = 0.1 * velocity * velocity * (1.0 - min(1.0, altitude/200.0));
+                
+                acceleration = thrust / mass - EARTH_GRAVITY * pow(EARTH_RADIUS/(EARTH_RADIUS + altitude), 2) - drag / mass;
+                velocity += acceleration * 0.1;
+                altitude += velocity * 0.1;
+                
+                // Consume fuel
+                s2FuelRemaining -= 1.5;
+                
+                // Log status
+                log("Altitude: " + altitude + " km, Velocity: " + velocity + 
+                    " m/s, Acceleration: " + acceleration + " m/s², Fuel: " + s2FuelRemaining + "%");
+                
+                sleep(0.1);
+            }
+            
+            log("Second stage separation");
+            sleep(1);
+            
+            // Third stage burn to orbit
+            log("Third stage ignition");
+            double orbitalVelocity = sqrt(EARTH_GRAVITY * pow(EARTH_RADIUS/(EARTH_RADIUS + altitude), 2) * (EARTH_RADIUS + altitude));
+            
+            while (s3FuelRemaining > 80.0 && velocity < orbitalVelocity) {
+                // Simulate rocket physics
+                double thrust = 1000.0; // kN
+                double mass = 120.0 * (s3FuelRemaining/100.0) + 30.0;
+                
+                acceleration = thrust / mass - EARTH_GRAVITY * pow(EARTH_RADIUS/(EARTH_RADIUS + altitude), 2);
+                velocity += acceleration * 0.1;
+                
+                // Consume fuel
+                s3FuelRemaining -= 0.5;
+                
+                // Log status
+                log("Altitude: " + altitude + " km, Velocity: " + velocity + 
+                    " m/s, Orbital velocity: " + orbitalVelocity + 
+                    " m/s, Fuel: " + s3FuelRemaining + "%");
+                
+                sleep(0.1);
+            }
+            
+            log("Earth orbit achieved!");
+            log("Velocity: " + velocity + " m/s");
+            log("Altitude: " + altitude + " km");
+            
+            // Update spacecraft state
+            this.position = Vector3(0, 0, EARTH_RADIUS + altitude);
+            this.velocity = Vector3(velocity, 0, 0);
+            cm.setPosition(this.position);
+            cm.setVelocity(this.velocity);
+            lm.setPosition(this.position);
+            lm.setVelocity(this.velocity);
+        }
+        
+        void transLunarInjection() {
+            log("Preparing for Trans-Lunar Injection (TLI) burn");
+            sleep(2);
+            
+            log("TLI burn starting");
+            double burnDuration = 0.0;
+            
+            while (s3FuelRemaining > 10.0 && burnDuration < 60.0) {
+                // Simulate TLI burn
+                double thrust = 1000.0; // kN
+                double mass = 120.0 * (s3FuelRemaining/100.0) + 30.0;
+                
+                // Consume fuel
+                s3FuelRemaining -= 1.5;
+                burnDuration += 0.1;
+                
+                // Log status
+                log("TLI burn in progress: " + burnDuration + " seconds, Fuel: " + s3FuelRemaining + "%");
+                
+                sleep(0.1);
+            }
+            
+            log("TLI burn complete");
+            log("On trajectory to the Moon");
+            
+            // Update spacecraft state
+            this.velocity = Vector3(velocity.x * 1.4, 0, 0); // Increase velocity for lunar trajectory
+            cm.setVelocity(this.velocity);
+            lm.setVelocity(this.velocity);
+        }
+        
+        void separateLunarModule() {
+            log("Separating Command and Service Module from third stage");
+            sleep(1);
+            log("CSM separation complete");
+            
+            log("Turning around to dock with Lunar Module");
+            sleep(2);
+            
+            log("Docking with Lunar Module");
+            sleep(2);
+            
+            log("Docking complete");
+            log("Extracting Lunar Module from third stage");
+            sleep(1);
+            
+            log("Lunar Module extraction complete");
+            log("Apollo spacecraft configuration complete for lunar journey");
+        }
+        
+        CommandModule getCommandModule() {
+            return cm;
+        }
+        
+        LunarModule getLunarModule() {
+            return lm;
+        }
+    }
+
+// Mission Control class
+class MissionControl {
+    private:
+        MissionStage currentStage = MissionStage.LAUNCH;
+        SaturnV rocket;
+        CommandModule cm;
+        LunarModule lm;
+        
+    public:
+        MissionControl(SaturnV vehicle) {
+            rocket = vehicle;
+            cm = rocket.getCommandModule();
+            lm = rocket.getLunarModule();
+            log("Mission Control initialized");
+        }
+        
+        void executeMission() {
+            log("Apollo 11 mission execution started");
+            
+            // Launch phase
+            setMissionStage(MissionStage.LAUNCH);
+            rocket.launchSequence();
+            
+            // Earth orbit phase
+            setMissionStage(MissionStage.EARTH_ORBIT);
+            log("Performing system checks in Earth orbit");
+            if (!cm.checkSystems()) {
+                log("ABORT: System check failed");
+                return;
+            }
+            
+            // Trans-lunar injection
+            setMissionStage(MissionStage.TRANS_LUNAR_INJECTION);
+            rocket.transLunarInjection();
+            rocket.separateLunarModule();
+            
+            // Simulate journey to the Moon (would take ~3 days)
+            log("Simulating 3-day journey to the Moon...");
+            sleep(3);
+            
+            // Lunar orbit insertion
+            setMissionStage(MissionStage.LUNAR_ORBIT_INSERTION);
+            log("Performing Lunar Orbit Insertion burn");
+            sleep(2);
+            log("Spacecraft now in lunar orbit");
+            
+            // Prepare for lunar descent
+            setMissionStage(MissionStage.DESCENT_ORBIT_INSERTION);
+            log("Performing Descent Orbit Insertion burn");
+            sleep(1);
+            
+            // Undock lunar module
+            log("Undocking Lunar Module");
+            sleep(1);
+            log("Eagle is undocked");
+            log("Columbia standing by in lunar orbit");
+            
+            // Powered descent
+            setMissionStage(MissionStage.POWERED_DESCENT);
+            lm.activateLandingRadar();
+            lm.performPoweredDescent(LANDING_SITE);
+            
+            // Lunar surface operations
+            setMissionStage(MissionStage.SURFACE_OPERATIONS);
+            log("Beginning EVA operations");
+            log("That's one small step for a man, one giant leap for mankind");
+            
+            // Simulate lunar surface activities
+            log("Collecting lunar samples");
+            log("Setting up experiments");
+            log("Planting flag");
+            sleep(2);
+            log("EVA complete, returning to Lunar Module");
+            
+            // Lunar ascent
+            setMissionStage(MissionStage.ASCENT);
+            lm.performAscentStage();
+            
+            // Rendezvous and docking
+            log("Performing rendezvous with Command Module");
+            sleep(2);
+            log("Docking complete");
+            log("Transferring crew and samples to Command Module");
+            sleep(1);
+            log("Jettisoning Lunar Module");
+            
+            // Return journey
+            setMissionStage(MissionStage.TRANS_EARTH_INJECTION);
+            log("Performing Trans-Earth Injection burn");
+            sleep(2);
+            log("On trajectory back to Earth");
+            
+            // Simulate return journey (would take ~3 days)
+            log("Simulating 3-day return journey to Earth...");
+            sleep(3);
+            
+            // Reentry
+            setMissionStage(MissionStage.EARTH_REENTRY);
+            log("Preparing for reentry");
+            log("Separating Command Module from Service Module");
+            sleep(1);
+            cm.performReentry(-6.5);
+            
+            // Splashdown
+            setMissionStage(MissionStage.SPLASHDOWN);
+            log("Splashdown in the Pacific Ocean");
+            log("Recovery teams dispatched");
+            sleep(1);
+            log("Crew safely recovered");
+            
+            log("Apollo 11 mission complete!");
+        }
+        
+        void setMissionStage(MissionStage stage) {
+            currentStage = stage;
+            log("Mission stage: " + getMissionStageName(stage));
+        }
+        
+        string getMissionStageName(MissionStage stage) {
+            switch (stage) {
+                case MissionStage.LAUNCH: return "Launch";
+                case MissionStage.EARTH_ORBIT: return "Earth Orbit";
+                case MissionStage.TRANS_LUNAR_INJECTION: return "Trans-Lunar Injection";
+                case MissionStage.LUNAR_ORBIT_INSERTION: return "Lunar Orbit Insertion";
+                case MissionStage.DESCENT_ORBIT_INSERTION: return "Descent Orbit Insertion";
+                case MissionStage.POWERED_DESCENT: return "Powered Descent";
+                case MissionStage.LANDING: return "Landing";
+                case MissionStage.SURFACE_OPERATIONS: return "Surface Operations";
+                case MissionStage.ASCENT: return "Ascent";
+                case MissionStage.TRANS_EARTH_INJECTION: return "Trans-Earth Injection";
+                case MissionStage.EARTH_REENTRY: return "Earth Reentry";
+                case MissionStage.SPLASHDOWN: return "Splashdown";
+                default: return "Unknown";
+            }
+        }
+    }
+
+// Telemetry monitoring task
+class TelemetryMonitor : Task {
+    private:
+        CommandModule cm;
+        LunarModule lm;
+        int updateInterval = 5; // seconds
+        
+    public:
+        TelemetryMonitor(CommandModule command, LunarModule lunar) {
+            cm = command;
+            lm = lunar;
+        }
+        
+        void execute() override {
+            while (true) {
+                log("--- TELEMETRY UPDATE ---");
+                log("Command Module:");
+                log("  Position: " + cm.getPosition().toString());
+                log("  Velocity: " + cm.getVelocity().toString());
+                log("  Fuel: " + cm.getFuelRemaining() + "%");
+                
+                log("Lunar Module:");
+                log("  Position: " + lm.getPosition().toString());
+                log("  Velocity: " + lm.getVelocity().toString());
+                log("  Descent Fuel: " + lm.getDescentFuelRemaining() + "%");
+                log("  Ascent Fuel: " + lm.getAscentFuelRemaining() + "%");
+                
+                sleep(updateInterval);
+            }
+        }
+    }
+
+// Main function
+function main() {
+    log("Apollo 11 Mission Simulation");
+    log("July 16-24, 1969");
+    
+    // Initialize spacecraft components
+    CommandModule columbia = new CommandModule();
+    LunarModule eagle = new LunarModule();
+    SaturnV saturn5 = new SaturnV(columbia, eagle);
+    
+    // Initialize mission control
+    MissionControl missionControl = new MissionControl(saturn5);
+    
+    // Start telemetry monitoring in a separate task
+    TelemetryMonitor telemetry = new TelemetryMonitor(columbia, eagle);
+    startTask(telemetry);
+    
+    // Execute the mission
+    missionControl.executeMission();
+    
+    return 0;
+}
+
+// Run the simulation
+main();
