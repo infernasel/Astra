@@ -23,6 +23,7 @@ include_directories(src)
 # Source files
 set(SOURCES
     src/main.cpp
+    src/ast/ast.cpp
     # Add implementation files here as they are created
 )
 

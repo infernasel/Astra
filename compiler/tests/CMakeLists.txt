@@ -12,10 +12,18 @@ set(TEST_SOURCES
     ir_test.cpp
     optimizer_test.cpp
     codegen_test.cpp
+    error_handler_test.cpp
+    ast_test.cpp
+    destructors_test.cpp
+)
+
+# Additional source files needed for tests
+set(ADDITIONAL_SOURCES
+    ${CMAKE_SOURCE_DIR}/src/ast/ast.cpp
 )
 
 # Create test executable
-add_executable(astra_tests ${TEST_SOURCES})
+add_executable(astra_tests ${TEST_SOURCES} ${ADDITIONAL_SOURCES})
 target_link_libraries(astra_tests ${GTEST_LIBRARIES} pthread)
 
 # Add tests

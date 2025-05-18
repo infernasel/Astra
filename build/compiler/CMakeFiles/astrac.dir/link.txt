@@ -1,0 +1,1 @@
+/usr/bin/c++ --coverage -Wall -Wextra -Werror -pedantic -g -g -O0 -fsanitize=address,undefined CMakeFiles/astrac.dir/src/main.cpp.o CMakeFiles/astrac.dir/src/ast/ast.cpp.o -o astrac 

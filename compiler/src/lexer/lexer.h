@@ -131,11 +131,13 @@ private:
                 return Token(type, value, lexeme, filename, line, startColumn);
             }
             
+            // For other keywords, don't set a value (use empty string for lexeme)
             return Token(type, lexeme, filename, line, startColumn);
         }
         
-        // It's an identifier
-        return Token(TokenType::Identifier, lexeme, filename, line, startColumn);
+        // It's an identifier - store the string value
+        std::string value = lexeme; // Создаем копию строки для значения
+        return Token(TokenType::Identifier, value, lexeme, filename, line, startColumn);
     }
     
     /**

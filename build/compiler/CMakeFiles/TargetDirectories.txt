@@ -1,0 +1,16 @@
+/workspace/github/build/compiler/CMakeFiles/astrac.dir
+/workspace/github/build/compiler/CMakeFiles/test.dir
+/workspace/github/build/compiler/CMakeFiles/edit_cache.dir
+/workspace/github/build/compiler/CMakeFiles/rebuild_cache.dir
+/workspace/github/build/compiler/CMakeFiles/list_install_components.dir
+/workspace/github/build/compiler/CMakeFiles/install.dir
+/workspace/github/build/compiler/CMakeFiles/install/local.dir
+/workspace/github/build/compiler/CMakeFiles/install/strip.dir
+/workspace/github/build/compiler/tests/CMakeFiles/astra_tests.dir
+/workspace/github/build/compiler/tests/CMakeFiles/test.dir
+/workspace/github/build/compiler/tests/CMakeFiles/edit_cache.dir
+/workspace/github/build/compiler/tests/CMakeFiles/rebuild_cache.dir
+/workspace/github/build/compiler/tests/CMakeFiles/list_install_components.dir
+/workspace/github/build/compiler/tests/CMakeFiles/install.dir
+/workspace/github/build/compiler/tests/CMakeFiles/install/local.dir
+/workspace/github/build/compiler/tests/CMakeFiles/install/strip.dir
