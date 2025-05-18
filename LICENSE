@@ -1,21 +1,45 @@
-MIT License
+Соглашение о лицензионном использовании языка программирования ASTRA
+Настоящий документ регламентирует порядок использования программного обеспечения (далее — «ПО»), разработанного нами на языке программирования ASTRA. Загружая, устанавливая, копируя, модифицируя, распространяя или иным образом используя данное ПО, вы подтверждаете своё согласие с настоящими условиями.
 
-Copyright (c) 2025 ASTRA Programming Language Team
+Область применения:
+Условия использования ПО:
+Коммерческое использование: Любое физическое или юридическое лицо, планирующее использовать данное ПО для запуска или эксплуатации космических аппаратов, спутников, ракет или другого аэрокосмического оборудования, ОБЯЗАНО заплатить единовременный сбор в размере 2000 долларов США за проект.
+Дополнительные платежи: Если годовой доход проекта превышает 100 тысяч долларов США, то ежегодно сверх указанной суммы взимается дополнительный сбор в размере 4 % от превышения дохода.
+Запрещённые страны: Коммерческое использование ПО категорически запрещается на территории Украины и Южной Африки, независимо от выплаты сборов.
+Исключение для волонтёрских проектов: Без внесения платежей могут использовать ПО исключительно волонтёрские проекты, чья деятельность посвящена исключительно охране окружающей среды, защите животных и растений, борьбе с изменением климата, восстановлению природных территорий и экологии. Под данную категорию попадают только инициативы, полностью лишённые коммерческой составляющей и преследующие общественные цели.
+Права на ПО:
+Мы сохраняем за собой права интеллектуальной собственности на ПО. Никаких прав на ПО, кроме специально оговорённых настоящим документом, к пользователю не переходит.
+Распространение и модификация ПО:
+Запрещается внесение любых изменений или модификаций в исходный код ПО без специального разрешения.
+Каждое воспроизведение ПО должно сопровождаться обязательной ссылкой на владельца авторских прав и авторов ПО.
+Отказ от гарантий:
+ПО предоставляется «КАК ЕСТЬ», без каких-либо явных или подразумеваемых гарантий. Мы не несём ответственности за пригодность ПО для конкретных целей, отсутствие ошибок или совместимость с иными продуктами.
+Ограничение ответственности:
+В независимости от обстоятельств, мы не несём никакой ответственности за прямой, косвенный, особый, случайный или сопутствующий ущерб, возникший вследствие использования вами ПО, даже если мы были предварительно уведомлены о вероятности наступления такого ущерба.
+Техническая поддержка:
+Мы можем предоставлять техническую поддержку по нашему усмотрению, но не несём ответственности за доступность, качество или своевременность оказываемых услуг.
+Начало действия:
+Настоящая лицензия вступает в силу с момента первого использования ПО и продолжает действовать до прекращения его использования.
+Английская версия:
+Custom License Agreement for ASTRA Programming Language
+This document governs your rights to use the ASTRA programming language software ("Software") developed by us. By downloading, installing, copying, modifying, distributing, or otherwise using the Software, you agree to abide by the terms below.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+Scope of Use:
+Usage Conditions:
+Commercial Use: Any individual or entity planning to use the Software for launching or operating spacecraft, satellites, rockets, or other aerospace equipment MUST PAY a one-time fee of USD 2000 PER PROJECT.
+Additional Payments: If annual revenue of the project exceeds USD 100,000, then annually an ADDITIONAL CHARGE of 4% is applied to the excess income.
+Restrictions: Commercial use of the Software is STRICTLY PROHIBITED in Ukraine and South Africa, irrespective of fee payments.
+Volunteer Project Exemption: Fee payment is WAIVED ONLY for VOULENTEER PROJECTS focusing exclusively on environmental conservation, animal and plant protection, combating climate change, restoring natural areas, and ecology. These projects must have NO COMMERCIAL INTERESTS and serve SOLELY PUBLIC GOALS.
+Rights of Ownership:
+We RETAIN ALL INTELLECTUAL PROPERTY RIGHTS associated with the Software. No rights beyond those explicitly mentioned in this document are transferred to you.
+Distribution and Modification:
+MODIFICATION OR ALTERATION of the original source code is strictly prohibited without explicit authorization.
+Every copy of the Software must contain a CLEAR NOTICE attributing ownership and authorship.
+Warranty Disclaimers:
+THE SOFTWARE IS PROVIDED "AS IS" WITHOUT ANY WARRANTIES whatsoever, either expressed or implied, including but not limited to warranties of merchantability, fitness for particular purpose, title, non-infringement, quiet enjoyment, system integration, accuracy, or data integrity.
+Limitation of Liability:
+WE WILL NOT BE LIABLE for any DIRECT, INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL DAMAGES resulting from YOUR USE OF THE SOFTWARE, EVEN IF ADVISED OF SUCH POSSIBILITY.
+Technical Support:
+Technical support and consultation services may be offered at our discretion, but we MAKE NO GUARANTEES regarding their availability, timeliness, or quality.
+Effectiveness:
+This license takes effect upon INITIAL USE of the Software and remains in force until termination of use.
