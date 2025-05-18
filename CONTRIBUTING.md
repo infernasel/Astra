@@ -5,7 +5,7 @@ Thank you for your interest in contributing to the ASTRA programming language! T
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/astra-language.git`
+2. Clone your fork: `git clone https://github.com/infernasel/Astra.git`
 3. Create a branch for your changes: `git checkout -b feature/your-feature-name`
 
 ## Development Environment Setup
@@ -59,4 +59,4 @@ Feature requests are welcome! Please provide:
 
 ## License
 
-By contributing to ASTRA, you agree that your contributions will be licensed under the project's MIT license.
+By contributing to ASTRA, you agree that your contributions will be licensed under the project's Custom License.

@@ -2,18 +2,33 @@
   <img src="assets/astra_logo_dark.png" alt="ASTRA Programming Language Logo" width="400"/>
 </p>
 
-# ASTRA Programming Language
+# 🚀 ASTRA Programming Language
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/infernasel/astra-language/build.yml?branch=main&style=flat-square)](https://github.com/infernasel/astra-language/actions)
-[![Test Coverage](https://img.shields.io/badge/coverage-89.8%25-brightgreen?style=flat-square)](https://github.com/infernasel/astra-language/actions)
-[![Version](https://img.shields.io/badge/version-0.1.1--alpha-blue?style=flat-square)](https://github.com/infernasel/astra-language/releases)
-[![License](https://img.shields.io/badge/license-Custom-orange?style=flat-square)](https://github.com/infernasel/astra-language/blob/main/CUSTOM_LICENSE.md)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-lightgrey?style=flat-square)](https://github.com/infernasel/astra-language/releases)
-[![Documentation](https://img.shields.io/badge/docs-wiki-yellow?style=flat-square)](https://github.com/infernasel/astra-language/wiki)
-[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square)](https://github.com/infernasel/astra-language/blob/main/CONTRIBUTING.md)
-[![GitHub Stars](https://img.shields.io/github/stars/infernasel/astra-language?style=flat-square)](https://github.com/infernasel/astra-language/stargazers)
-[![GitHub Forks](https://img.shields.io/github/forks/infernasel/astra-language?style=flat-square)](https://github.com/infernasel/astra-language/network/members)
-[![GitHub Issues](https://img.shields.io/github/issues/infernasel/astra-language?style=flat-square)](https://github.com/infernasel/astra-language/issues)
+<div align="center">
+  <img src="https://raw.githubusercontent.com/infernasel/Astra/master/docs/assets/astra-logo.png" alt="ASTRA Logo" width="300"/>
+  <br><br>
+  
+  [![Build Status](https://img.shields.io/github/actions/workflow/status/infernasel/Astra/build.yml?branch=main&style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/infernasel/Astra/actions)
+  [![Test Coverage](https://img.shields.io/badge/coverage-89.8%25-brightgreen?style=for-the-badge&logo=codecov&logoColor=white)](https://github.com/infernasel/Astra/actions)
+  [![Version](https://img.shields.io/badge/version-0.1.1--alpha-blue?style=for-the-badge&logo=semver&logoColor=white)](https://github.com/infernasel/Astra/releases)
+  [![License](https://img.shields.io/badge/license-Custom-orange?style=for-the-badge&logo=open-source-initiative&logoColor=white)](https://github.com/infernasel/Astra/blob/main/CUSTOM_LICENSE.md)
+  
+  [![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-lightgrey?style=for-the-badge&logo=linux&logoColor=white)](https://github.com/infernasel/Astra/releases)
+  [![Documentation](https://img.shields.io/badge/docs-wiki-yellow?style=for-the-badge&logo=gitbook&logoColor=white)](https://github.com/infernasel/Astra/wiki)
+  [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=for-the-badge&logo=github&logoColor=white)](https://github.com/infernasel/Astra/blob/main/CONTRIBUTING.md)
+  
+  [![GitHub Stars](https://img.shields.io/github/stars/infernasel/Astra?style=for-the-badge&logo=github&logoColor=white)](https://github.com/infernasel/Astra/stargazers)
+  [![GitHub Forks](https://img.shields.io/github/forks/infernasel/Astra?style=for-the-badge&logo=git&logoColor=white)](https://github.com/infernasel/Astra/network/members)
+  [![GitHub Issues](https://img.shields.io/github/issues/infernasel/Astra?style=for-the-badge&logo=github&logoColor=white)](https://github.com/infernasel/Astra/issues)
+  
+  [![C++](https://img.shields.io/badge/C++-17-00599C?style=for-the-badge&logo=c%2B%2B&logoColor=white)](https://github.com/infernasel/Astra)
+  [![LLVM](https://img.shields.io/badge/LLVM-Powered-2C3E50?style=for-the-badge&logo=llvm&logoColor=white)](https://github.com/infernasel/Astra)
+  [![UAV](https://img.shields.io/badge/UAV-Compatible-1abc9c?style=for-the-badge&logo=drone&logoColor=white)](https://github.com/infernasel/Astra)
+  
+  [![Last Commit](https://img.shields.io/github/last-commit/infernasel/Astra?style=for-the-badge&logo=git&logoColor=white)](https://github.com/infernasel/Astra/commits/master)
+  [![Open Issues](https://img.shields.io/github/issues-raw/infernasel/Astra?style=for-the-badge&logo=github&logoColor=white)](https://github.com/infernasel/Astra/issues)
+  [![Contributors](https://img.shields.io/github/contributors/infernasel/Astra?style=for-the-badge&logo=github&logoColor=white)](https://github.com/infernasel/Astra/graphs/contributors)
+</div>
 
 ASTRA (Autonomous System Task-oriented Reliable Architecture) is a specialized programming language designed for controlling spacecraft and unmanned aerial vehicles (UAVs). This project aims to create a high-efficiency, safety-focused language for developing software used in spacecraft control, satellite systems, interorbital transfers, and autonomous drone flights.
 
@@ -64,7 +79,7 @@ The ASTRA language is designed with the following key features:
 
 ```bash
 # Clone the repository
-git clone https://github.com/infernasel/astra-language.git
+git clone https://github.com/infernasel/Astra.git
 cd astra-language
 
 # Build the compiler
@@ -81,7 +96,7 @@ make astra_tests
 
 Pre-built binaries are available for the following platforms:
 
-- **Windows (x86_64)**: Available in the [release/windows](https://github.com/infernasel/astra-language/tree/main/release/windows) directory
+- **Windows (x86_64)**: Available in the [release/windows](https://github.com/infernasel/Astra/tree/main/release/windows) directory
 - **Linux (x86_64)**: Coming soon
 
 ## Example ASTRA Code
@@ -129,7 +144,7 @@ task NavigateToPoint(point: Vec3) {
 
 ## Documentation
 
-For detailed documentation, please visit our [Wiki](https://github.com/infernasel/astra-language/wiki).
+For detailed documentation, please visit our [Wiki](https://github.com/infernasel/Astra/wiki).
 
 ## Contributing
 

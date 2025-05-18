@@ -14,7 +14,7 @@
 
 ```bash
 # Клонирование репозитория
-git clone https://github.com/infernasel/astra-language.git
+git clone https://github.com/infernasel/Astra.git
 cd astra-language
 
 # Сборка компилятора
@@ -31,7 +31,7 @@ make astra_tests
 
 Предварительно собранные бинарные файлы доступны для следующих платформ:
 
-- **Windows (x86_64)**: Доступны в директории [release/windows](https://github.com/infernasel/astra-language/tree/main/release/windows)
+- **Windows (x86_64)**: Доступны в директории [release/windows](https://github.com/infernasel/Astra/tree/main/release/windows)
 - **Linux (x86_64)**: Скоро будут доступны
 
 ## Ваша первая программа на ASTRA

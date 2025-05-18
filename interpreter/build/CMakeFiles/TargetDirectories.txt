@@ -1,0 +1,16 @@
+/workspace/github/interpreter/build/CMakeFiles/astra.dir
+/workspace/github/interpreter/build/CMakeFiles/test.dir
+/workspace/github/interpreter/build/CMakeFiles/edit_cache.dir
+/workspace/github/interpreter/build/CMakeFiles/rebuild_cache.dir
+/workspace/github/interpreter/build/CMakeFiles/list_install_components.dir
+/workspace/github/interpreter/build/CMakeFiles/install.dir
+/workspace/github/interpreter/build/CMakeFiles/install/local.dir
+/workspace/github/interpreter/build/CMakeFiles/install/strip.dir
+/workspace/github/interpreter/build/tests/CMakeFiles/astra_interpreter_tests.dir
+/workspace/github/interpreter/build/tests/CMakeFiles/test.dir
+/workspace/github/interpreter/build/tests/CMakeFiles/edit_cache.dir
+/workspace/github/interpreter/build/tests/CMakeFiles/rebuild_cache.dir
+/workspace/github/interpreter/build/tests/CMakeFiles/list_install_components.dir
+/workspace/github/interpreter/build/tests/CMakeFiles/install.dir
+/workspace/github/interpreter/build/tests/CMakeFiles/install/local.dir
+/workspace/github/interpreter/build/tests/CMakeFiles/install/strip.dir

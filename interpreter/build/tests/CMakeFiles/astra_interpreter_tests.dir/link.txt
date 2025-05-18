@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -Werror -pedantic CMakeFiles/astra_interpreter_tests.dir/vm_test.cpp.o CMakeFiles/astra_interpreter_tests.dir/runtime_test.cpp.o CMakeFiles/astra_interpreter_tests.dir/stdlib_test.cpp.o -o astra_interpreter_tests  /usr/lib/x86_64-linux-gnu/libgtest.a -lpthread 

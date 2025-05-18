@@ -1,0 +1,5 @@
+// This is a test ASTRA program
+function main() {
+    print("Hello, World!");
+    return 0;
+}

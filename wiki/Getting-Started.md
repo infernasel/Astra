@@ -14,7 +14,7 @@ This guide will help you set up your development environment and create your fir
 
 ```bash
 # Clone the repository
-git clone https://github.com/infernasel/astra-language.git
+git clone https://github.com/infernasel/Astra.git
 cd astra-language
 
 # Build the compiler
@@ -31,7 +31,7 @@ make astra_tests
 
 Pre-built binaries are available for the following platforms:
 
-- **Windows (x86_64)**: Available in the [release/windows](https://github.com/infernasel/astra-language/tree/main/release/windows) directory
+- **Windows (x86_64)**: Available in the [release/windows](https://github.com/infernasel/Astra/tree/main/release/windows) directory
 - **Linux (x86_64)**: Coming soon
 
 ## Your First ASTRA Program

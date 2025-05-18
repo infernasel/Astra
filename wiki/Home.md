@@ -27,12 +27,12 @@ ASTRA (Autonomous System Task-oriented Reliable Architecture) is a specialized p
 
 ## Community
 
-* [GitHub Repository](https://github.com/infernasel/astra-language)
-* [Issue Tracker](https://github.com/infernasel/astra-language/issues)
+* [GitHub Repository](https://github.com/infernasel/Astra)
+* [Issue Tracker](https://github.com/infernasel/Astra/issues)
 * [Contact Support](mailto:support@arlist-interactive.ru)
 
 ## License
 
-This project is available under a [Custom License](https://github.com/infernasel/astra-language/blob/main/CUSTOM_LICENSE.md) for both non-commercial and commercial use in aerospace and UAV applications.
+This project is available under a [Custom License](https://github.com/infernasel/Astra/blob/main/CUSTOM_LICENSE.md) for both non-commercial and commercial use in aerospace and UAV applications.
 
 Please review the license carefully before using this software.

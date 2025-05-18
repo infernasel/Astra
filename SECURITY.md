@@ -14,7 +14,7 @@ Currently, the following versions of ASTRA Language are supported with security 
 We take the security of ASTRA Language seriously. If you believe you've found a security vulnerability, please follow these steps:
 
 1. **Do not disclose the vulnerability publicly**
-2. **Email us at security@astra-language.org** with details about the vulnerability
+2. **Email us at support@arlist-interactive.ru** with details about the vulnerability
 3. Include the following information:
    - Type of vulnerability
    - Full path to the vulnerable file(s)

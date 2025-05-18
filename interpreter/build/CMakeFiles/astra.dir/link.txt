@@ -1,0 +1,1 @@
+/usr/bin/c++  -Wall -Wextra -Werror -pedantic CMakeFiles/astra.dir/src/main.cpp.o CMakeFiles/astra.dir/src/vm/vm.cpp.o CMakeFiles/astra.dir/src/runtime/runtime.cpp.o -o astra 

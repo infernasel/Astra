@@ -1,0 +1,41 @@
+cmake_minimum_required(VERSION 3.10)
+
+# Project name
+project(astra-compiler)
+
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Set compiler flags
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -pedantic")
+endif()
+
+# Set build type if not specified
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Release)
+endif()
+
+# Include directories
+include_directories(src)
+
+# Source files
+set(SOURCES
+    src/main_minimal.cpp
+    src/utils/error_handler_minimal.cpp
+    src/utils/options_minimal.cpp
+)
+
+# Header files
+set(HEADERS
+    src/utils/error_handler_minimal.h
+    src/utils/options_minimal.h
+)
+
+# Create executable
+add_executable(astrac ${SOURCES} ${HEADERS})
+
+# Install
+install(TARGETS astrac DESTINATION bin)

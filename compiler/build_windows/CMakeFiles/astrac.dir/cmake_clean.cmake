@@ -1,0 +1,32 @@
+file(REMOVE_RECURSE
+  "CMakeFiles/astrac.dir/src/ast/ast_minimal.cpp.obj"
+  "CMakeFiles/astrac.dir/src/ast/ast_minimal.cpp.obj.d"
+  "CMakeFiles/astrac.dir/src/codegen/llvm_generator.cpp.obj"
+  "CMakeFiles/astrac.dir/src/codegen/llvm_generator.cpp.obj.d"
+  "CMakeFiles/astrac.dir/src/ir/generator.cpp.obj"
+  "CMakeFiles/astrac.dir/src/ir/generator.cpp.obj.d"
+  "CMakeFiles/astrac.dir/src/lexer/lexer_minimal.cpp.obj"
+  "CMakeFiles/astrac.dir/src/lexer/lexer_minimal.cpp.obj.d"
+  "CMakeFiles/astrac.dir/src/main.cpp.obj"
+  "CMakeFiles/astrac.dir/src/main.cpp.obj.d"
+  "CMakeFiles/astrac.dir/src/optimizer/optimizer.cpp.obj"
+  "CMakeFiles/astrac.dir/src/optimizer/optimizer.cpp.obj.d"
+  "CMakeFiles/astrac.dir/src/parser/parser_minimal.cpp.obj"
+  "CMakeFiles/astrac.dir/src/parser/parser_minimal.cpp.obj.d"
+  "CMakeFiles/astrac.dir/src/semantic/analyzer.cpp.obj"
+  "CMakeFiles/astrac.dir/src/semantic/analyzer.cpp.obj.d"
+  "CMakeFiles/astrac.dir/src/utils/error_handler.cpp.obj"
+  "CMakeFiles/astrac.dir/src/utils/error_handler.cpp.obj.d"
+  "CMakeFiles/astrac.dir/src/utils/options.cpp.obj"
+  "CMakeFiles/astrac.dir/src/utils/options.cpp.obj.d"
+  "CMakeFiles/astrac.dir/src/vm/vm.cpp.obj"
+  "CMakeFiles/astrac.dir/src/vm/vm.cpp.obj.d"
+  "astrac.exe"
+  "astrac.pdb"
+  "libastrac.dll.a"
+)
+
+# Per-language clean rules from dependency scanning.
+foreach(lang CXX)
+  include(CMakeFiles/astrac.dir/cmake_clean_${lang}.cmake OPTIONAL)
+endforeach()

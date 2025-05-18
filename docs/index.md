@@ -7,11 +7,11 @@ title: ASTRA Programming Language
 
 ![ASTRA Logo](/assets/images/astra_logo.png)
 
-[![Build Status](https://img.shields.io/github/actions/workflow/status/infernasel/astra-language/build.yml?branch=main&style=flat-square)](https://github.com/infernasel/astra-language/actions)
-[![Test Coverage](https://img.shields.io/badge/coverage-89.8%25-brightgreen?style=flat-square)](https://github.com/infernasel/astra-language/actions)
-[![Version](https://img.shields.io/badge/version-0.1.1--alpha-blue?style=flat-square)](https://github.com/infernasel/astra-language/releases)
-[![License](https://img.shields.io/badge/license-Custom-orange?style=flat-square)](https://github.com/infernasel/astra-language/blob/main/CUSTOM_LICENSE.md)
-[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-lightgrey?style=flat-square)](https://github.com/infernasel/astra-language/releases)
+[![Build Status](https://img.shields.io/github/actions/workflow/status/infernasel/Astra/build.yml?branch=main&style=flat-square)](https://github.com/infernasel/Astra/actions)
+[![Test Coverage](https://img.shields.io/badge/coverage-89.8%25-brightgreen?style=flat-square)](https://github.com/infernasel/Astra/actions)
+[![Version](https://img.shields.io/badge/version-0.1.1--alpha-blue?style=flat-square)](https://github.com/infernasel/Astra/releases)
+[![License](https://img.shields.io/badge/license-Custom-orange?style=flat-square)](https://github.com/infernasel/Astra/blob/main/CUSTOM_LICENSE.md)
+[![Platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-lightgrey?style=flat-square)](https://github.com/infernasel/Astra/releases)
 
 ASTRA (Autonomous System Task-oriented Reliable Architecture) is a specialized programming language designed for controlling spacecraft and unmanned aerial vehicles (UAVs). This project aims to create a high-efficiency, safety-focused language for developing software used in spacecraft control, satellite systems, interorbital transfers, and autonomous drone flights.
 
@@ -79,6 +79,6 @@ To get started with ASTRA, check out our [Getting Started Guide](/getting_starte
 
 ## License
 
-This project is available under a [Custom License](https://github.com/infernasel/astra-language/blob/main/CUSTOM_LICENSE.md) for both non-commercial and commercial use in aerospace and UAV applications.
+This project is available under a [Custom License](https://github.com/infernasel/Astra/blob/main/CUSTOM_LICENSE.md) for both non-commercial and commercial use in aerospace and UAV applications.
 
 Please review the license carefully before using this software.
