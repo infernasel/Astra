@@ -58,7 +58,7 @@ The ASTRA language is designed with the following key features:
 
 - CMake 3.10 or higher
 - C++17 compatible compiler
-- LLVM 10.0 or higher (for code generation)
+
 
 ### Building from Source
 
