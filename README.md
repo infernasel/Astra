@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="assets/astra_logo_dark.png" alt="ASTRA Programming Language Logo" width="400"/>
-</p>
+
 
 # ASTRA Programming Language
 
