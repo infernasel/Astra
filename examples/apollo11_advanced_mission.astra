@@ -1,0 +1,4059 @@
+/**
+ * ASTRA Programming Language
+ * Advanced Apollo 11 Mission Simulation System
+ * 
+ * This comprehensive simulation demonstrates the full capabilities of the ASTRA language
+ * for complex aerospace applications, including:
+ * - High-fidelity orbital mechanics
+ * - Multi-body gravitational systems
+ * - Spacecraft systems modeling
+ * - Mission control operations
+ * - Fault detection and recovery
+ * - Real-time telemetry processing
+ * - Concurrent task management
+ * 
+ * This simulation models the complete Apollo 11 mission with exceptional detail,
+ * from launch preparation to splashdown recovery.
+ */
+
+// =====================================================================
+// CORE SYSTEM IMPORTS
+// =====================================================================
+import system.time;
+import system.concurrent;
+import system.io;
+import system.memory;
+import system.network;
+import system.diagnostics;
+
+// =====================================================================
+// MATHEMATICS AND PHYSICS IMPORTS
+// =====================================================================
+import math.vector;
+import math.matrix;
+import math.quaternion;
+import math.differential;
+import math.statistics;
+import math.numerical;
+import math.optimization;
+import math.interpolation;
+import math.coordinate;
+import math.transform;
+import math.integration;
+import math.random;
+
+// =====================================================================
+// AEROSPACE SPECIFIC IMPORTS
+// =====================================================================
+import aerospace.navigation;
+import aerospace.propulsion;
+import aerospace.telemetry;
+import aerospace.trajectory;
+import aerospace.orbital;
+import aerospace.attitude;
+import aerospace.thermal;
+import aerospace.structures;
+import aerospace.communication;
+import aerospace.guidance;
+import aerospace.reentry;
+import aerospace.life_support;
+import aerospace.power;
+
+// =====================================================================
+// CONSTANTS AND CONFIGURATION
+// =====================================================================
+
+// Physical constants
+namespace Constants {
+    // Astronomical constants
+    const double G = 6.67430e-11;           // Gravitational constant (m^3 kg^-1 s^-2)
+    const double SPEED_OF_LIGHT = 299792458.0; // Speed of light (m/s)
+    const double AU = 149597870700.0;       // Astronomical Unit (m)
+    
+    // Earth constants
+    const double EARTH_RADIUS = 6371000.0;  // Mean radius (m)
+    const double EARTH_MASS = 5.972e24;     // Mass (kg)
+    const double EARTH_MU = G * EARTH_MASS; // Standard gravitational parameter (m^3/s^2)
+    const double EARTH_J2 = 1.08262668e-3;  // J2 coefficient (oblateness)
+    const double EARTH_ROTATION_RATE = 7.2921159e-5; // rad/s
+    const double EARTH_ATMOSPHERE_HEIGHT = 100000.0; // Approximate height of atmosphere (m)
+    
+    // Moon constants
+    const double MOON_RADIUS = 1737400.0;   // Mean radius (m)
+    const double MOON_MASS = 7.342e22;      // Mass (kg)
+    const double MOON_MU = G * MOON_MASS;   // Standard gravitational parameter (m^3/s^2)
+    const double MOON_DISTANCE = 384400000.0; // Average Earth-Moon distance (m)
+    const double MOON_ORBITAL_PERIOD = 27.321661 * 24 * 3600; // Sidereal orbital period (s)
+    
+    // Sun constants
+    const double SUN_RADIUS = 695700000.0;  // Mean radius (m)
+    const double SUN_MASS = 1.989e30;       // Mass (kg)
+    const double SUN_MU = G * SUN_MASS;     // Standard gravitational parameter (m^3/s^2)
+    
+    // Mission specific constants
+    const double MISSION_START_DATE = 2440423.5; // Julian date for July 16, 1969, 13:32:00 UTC
+    const double MISSION_DURATION = 8.142; // Duration in days
+    
+    // Conversion factors
+    const double DEG_TO_RAD = 0.01745329251994329576923690768489;
+    const double RAD_TO_DEG = 57.295779513082320876798154814105;
+    const double FT_TO_M = 0.3048;
+    const double LB_TO_KG = 0.45359237;
+    const double PSI_TO_PA = 6894.76;
+    const double BTU_TO_J = 1055.06;
+}
+
+// Mission configuration
+namespace MissionConfig {
+    // Launch configuration
+    const Vector3 LAUNCH_SITE = Vector3(28.5729, -80.6490, 0); // Kennedy Space Center (lat, lon, alt)
+    const double LAUNCH_AZIMUTH = 72.058; // Launch azimuth in degrees
+    
+    // Target orbit parameters
+    const double PARKING_ORBIT_ALTITUDE = 191.3 * 1000; // m
+    const double PARKING_ORBIT_INCLINATION = 32.5; // degrees
+    
+    // Trans-lunar injection parameters
+    const double TLI_DELTA_V = 3.05 * 1000; // m/s
+    const double TLI_BURN_DURATION = 350.0; // s
+    
+    // Lunar orbit parameters
+    const double LUNAR_ORBIT_ALTITUDE = 110.0 * 1000; // m
+    const double LUNAR_ORBIT_INCLINATION = 1.25; // degrees
+    
+    // Landing site
+    const Vector3 LANDING_SITE = Vector3(0.67408, 23.47297, 0); // Mare Tranquillitatis (lat, lon, alt)
+    
+    // Mission timeline key events (seconds from launch)
+    const double T_LAUNCH = 0.0;
+    const double T_S1C_CUTOFF = 161.0;
+    const double T_S2_CUTOFF = 548.0;
+    const double T_S4B_CUTOFF_1 = 700.0;
+    const double T_EARTH_ORBIT_INSERTION = 702.0;
+    const double T_TLI_IGNITION = 9600.0; // 2h 40m after launch
+    const double T_TLI_CUTOFF = 9950.0;
+    const double T_CSM_SEPARATION = 10800.0; // 3h after launch
+    const double T_LUNAR_ORBIT_INSERTION = 290000.0; // ~3 days 8h after launch
+    const double T_LM_SEPARATION = 342000.0; // ~4 days after launch
+    const double T_LUNAR_LANDING = 347400.0; // ~4 days 1h 30m after launch
+    const double T_LUNAR_EVA_START = 362700.0; // ~4 days 5h 45m after launch
+    const double T_LUNAR_EVA_END = 369900.0; // ~4 days 8h 45m after launch
+    const double T_LUNAR_ASCENT = 383400.0; // ~4 days 12h 30m after launch
+    const double T_LUNAR_RENDEZVOUS = 387000.0; // ~4 days 13h 30m after launch
+    const double T_TRANS_EARTH_INJECTION = 428400.0; // ~5 days after launch
+    const double T_REENTRY = 689400.0; // ~8 days after launch
+    const double T_SPLASHDOWN = 691200.0; // ~8 days after launch
+}
+
+// Saturn V rocket configuration
+namespace SaturnVConfig {
+    // Stage 1 (S-IC)
+    const double S1C_MASS_DRY = 131000.0; // kg
+    const double S1C_MASS_PROPELLANT = 2080000.0; // kg
+    const double S1C_THRUST_SL = 33400000.0; // N (sea level)
+    const double S1C_THRUST_VAC = 38700000.0; // N (vacuum)
+    const double S1C_ISP_SL = 263.0; // s (sea level)
+    const double S1C_ISP_VAC = 304.0; // s (vacuum)
+    const double S1C_BURN_TIME = 161.0; // s
+    
+    // Stage 2 (S-II)
+    const double S2_MASS_DRY = 36000.0; // kg
+    const double S2_MASS_PROPELLANT = 456000.0; // kg
+    const double S2_THRUST_VAC = 5115000.0; // N (vacuum)
+    const double S2_ISP_VAC = 421.0; // s (vacuum)
+    const double S2_BURN_TIME = 384.0; // s
+    
+    // Stage 3 (S-IVB)
+    const double S4B_MASS_DRY = 11800.0; // kg
+    const double S4B_MASS_PROPELLANT = 108000.0; // kg
+    const double S4B_THRUST_VAC = 1033000.0; // N (vacuum)
+    const double S4B_ISP_VAC = 421.0; // s (vacuum)
+    const double S4B_BURN_TIME_1 = 147.0; // s (first burn)
+    const double S4B_BURN_TIME_2 = 347.0; // s (TLI burn)
+    
+    // Command and Service Module (CSM)
+    const double CSM_MASS_DRY = 11900.0; // kg
+    const double CSM_MASS_PROPELLANT = 18500.0; // kg
+    const double CSM_THRUST_MAIN = 91000.0; // N (Service Propulsion System)
+    const double CSM_ISP_MAIN = 314.0; // s (SPS)
+    const double CSM_THRUST_RCS = 440.0; // N (per thruster)
+    const double CSM_ISP_RCS = 290.0; // s (RCS)
+    
+    // Lunar Module (LM)
+    const double LM_MASS_DRY_DESCENT = 2760.0; // kg
+    const double LM_MASS_DRY_ASCENT = 2150.0; // kg
+    const double LM_MASS_PROPELLANT_DESCENT = 8200.0; // kg
+    const double LM_MASS_PROPELLANT_ASCENT = 2350.0; // kg
+    const double LM_THRUST_DESCENT = 45000.0; // N
+    const double LM_THRUST_ASCENT = 15600.0; // N
+    const double LM_ISP_DESCENT = 311.0; // s
+    const double LM_ISP_ASCENT = 311.0; // s
+    const double LM_THRUST_RCS = 440.0; // N (per thruster)
+    const double LM_ISP_RCS = 290.0; // s (RCS)
+}
+
+// =====================================================================
+// UTILITY CLASSES
+// =====================================================================
+
+/**
+ * Logger class for mission events and telemetry
+ */
+class Logger {
+    private:
+        static Logger instance;
+        Array<string> logEntries;
+        bool consoleOutput = true;
+        string logFilePath = "apollo11_mission.log";
+        File logFile;
+        
+    private:
+        Logger() {
+            logFile = File(logFilePath, "w");
+        }
+        
+    public:
+        static Logger& getInstance() {
+            return instance;
+        }
+        
+        void log(string message, string level = "INFO") {
+            string timestamp = Time.now().toString();
+            string entry = "[" + timestamp + "] [" + level + "] " + message;
+            
+            logEntries.push(entry);
+            
+            if (consoleOutput) {
+                println(entry);
+            }
+            
+            if (logFile.isOpen()) {
+                logFile.writeLine(entry);
+                logFile.flush();
+            }
+        }
+        
+        void setConsoleOutput(bool enabled) {
+            consoleOutput = enabled;
+        }
+        
+        void setLogFilePath(string path) {
+            if (logFile.isOpen()) {
+                logFile.close();
+            }
+            
+            logFilePath = path;
+            logFile = File(logFilePath, "w");
+        }
+        
+        Array<string> getLogEntries() {
+            return logEntries;
+        }
+        
+        void clearLog() {
+            logEntries.clear();
+            
+            if (logFile.isOpen()) {
+                logFile.close();
+                logFile = File(logFilePath, "w");
+            }
+        }
+    }
+
+/**
+ * Time management class for mission timeline
+ */
+class MissionTime {
+    private:
+        static MissionTime instance;
+        double missionStartTime; // Julian date
+        double currentTime;      // Seconds from mission start
+        double timeScale = 1.0;  // Simulation time scale factor
+        
+    private:
+        MissionTime() {
+            missionStartTime = Constants.MISSION_START_DATE;
+            currentTime = 0.0;
+        }
+        
+    public:
+        static MissionTime& getInstance() {
+            return instance;
+        }
+        
+        void setCurrentTime(double seconds) {
+            currentTime = seconds;
+        }
+        
+        double getCurrentTime() {
+            return currentTime;
+        }
+        
+        void advanceTime(double seconds) {
+            currentTime += seconds * timeScale;
+        }
+        
+        void setTimeScale(double scale) {
+            timeScale = scale;
+        }
+        
+        double getTimeScale() {
+            return timeScale;
+        }
+        
+        string getFormattedTime() {
+            int days = (int)(currentTime / 86400);
+            int hours = (int)((currentTime - days * 86400) / 3600);
+            int minutes = (int)((currentTime - days * 86400 - hours * 3600) / 60);
+            int seconds = (int)(currentTime - days * 86400 - hours * 3600 - minutes * 60);
+            
+            return "T+" + (days > 0 ? days + "d " : "") + 
+                   hours + "h " + minutes + "m " + seconds + "s";
+        }
+        
+        double getJulianDate() {
+            return missionStartTime + currentTime / 86400.0;
+        }
+        
+        bool isEventDue(double eventTime) {
+            return currentTime >= eventTime;
+        }
+    }
+
+/**
+ * Configuration manager for mission parameters
+ */
+class ConfigurationManager {
+    private:
+        static ConfigurationManager instance;
+        Object parameters;
+        
+    private:
+        ConfigurationManager() {
+            // Initialize with default parameters
+            parameters = Object();
+            loadDefaultConfiguration();
+        }
+        
+    public:
+        static ConfigurationManager& getInstance() {
+            return instance;
+        }
+        
+        void loadDefaultConfiguration() {
+            // Mission parameters
+            parameters.set("mission.name", "Apollo 11");
+            parameters.set("mission.start_date", Constants.MISSION_START_DATE);
+            parameters.set("mission.duration", Constants.MISSION_DURATION);
+            
+            // Simulation parameters
+            parameters.set("simulation.time_step", 0.1);
+            parameters.set("simulation.max_iterations", 1000000);
+            parameters.set("simulation.tolerance", 1e-6);
+            
+            // Numerical integration parameters
+            parameters.set("integration.method", "RK4");
+            parameters.set("integration.step_size", 1.0);
+            parameters.set("integration.min_step_size", 0.01);
+            parameters.set("integration.max_step_size", 10.0);
+            parameters.set("integration.error_tolerance", 1e-8);
+            
+            // Orbital parameters
+            parameters.set("orbit.earth.perturbations.j2", true);
+            parameters.set("orbit.earth.perturbations.j3", false);
+            parameters.set("orbit.earth.perturbations.atmospheric_drag", true);
+            parameters.set("orbit.earth.perturbations.solar_radiation", true);
+            parameters.set("orbit.earth.perturbations.third_body", true);
+            
+            // Spacecraft parameters
+            parameters.set("spacecraft.csm.dry_mass", SaturnVConfig.CSM_MASS_DRY);
+            parameters.set("spacecraft.csm.propellant_mass", SaturnVConfig.CSM_MASS_PROPELLANT);
+            parameters.set("spacecraft.lm.dry_mass_descent", SaturnVConfig.LM_MASS_DRY_DESCENT);
+            parameters.set("spacecraft.lm.dry_mass_ascent", SaturnVConfig.LM_MASS_DRY_ASCENT);
+            parameters.set("spacecraft.lm.propellant_mass_descent", SaturnVConfig.LM_MASS_PROPELLANT_DESCENT);
+            parameters.set("spacecraft.lm.propellant_mass_ascent", SaturnVConfig.LM_MASS_PROPELLANT_ASCENT);
+            
+            // Guidance parameters
+            parameters.set("guidance.landing.max_horizontal_velocity", 1.0);
+            parameters.set("guidance.landing.max_vertical_velocity", 2.0);
+            parameters.set("guidance.landing.hover_altitude", 30.0);
+            parameters.set("guidance.landing.touchdown_altitude", 0.0);
+            
+            // Communication parameters
+            parameters.set("communication.delay.earth_moon", 1.3);
+            parameters.set("communication.bandwidth", 51200);
+            parameters.set("communication.error_rate", 1e-5);
+            
+            // Fault simulation parameters
+            parameters.set("faults.enabled", true);
+            parameters.set("faults.probability", 0.01);
+            parameters.set("faults.severity.low", 0.7);
+            parameters.set("faults.severity.medium", 0.25);
+            parameters.set("faults.severity.high", 0.05);
+        }
+        
+        void loadFromFile(string filePath) {
+            File configFile = File(filePath, "r");
+            if (!configFile.isOpen()) {
+                Logger.getInstance().log("Failed to open configuration file: " + filePath, "ERROR");
+                return;
+            }
+            
+            string line;
+            while ((line = configFile.readLine()) != "") {
+                if (line.startsWith("#") || line.trim() == "") {
+                    continue; // Skip comments and empty lines
+                }
+                
+                Array<string> parts = line.split("=");
+                if (parts.size() == 2) {
+                    string key = parts[0].trim();
+                    string value = parts[1].trim();
+                    
+                    // Convert value to appropriate type
+                    if (value == "true" || value == "false") {
+                        parameters.set(key, value == "true");
+                    } else if (value.isNumeric()) {
+                        if (value.contains(".")) {
+                            parameters.set(key, value.toDouble());
+                        } else {
+                            parameters.set(key, value.toInt());
+                        }
+                    } else {
+                        parameters.set(key, value);
+                    }
+                }
+            }
+            
+            configFile.close();
+        }
+        
+        void saveToFile(string filePath) {
+            File configFile = File(filePath, "w");
+            if (!configFile.isOpen()) {
+                Logger.getInstance().log("Failed to open configuration file for writing: " + filePath, "ERROR");
+                return;
+            }
+            
+            configFile.writeLine("# Apollo 11 Mission Configuration");
+            configFile.writeLine("# Generated on " + Time.now().toString());
+            configFile.writeLine("");
+            
+            Array<string> keys = parameters.getKeys();
+            for (int i = 0; i < keys.size(); i++) {
+                string key = keys[i];
+                Value value = parameters.get(key);
+                configFile.writeLine(key + " = " + value.toString());
+            }
+            
+            configFile.close();
+        }
+        
+        template<typename T>
+        T get(string key, T defaultValue) {
+            if (parameters.has(key)) {
+                return parameters.get(key).as<T>();
+            }
+            return defaultValue;
+        }
+        
+        template<typename T>
+        void set(string key, T value) {
+            parameters.set(key, value);
+        }
+        
+        bool has(string key) {
+            return parameters.has(key);
+        }
+        
+        void remove(string key) {
+            parameters.remove(key);
+        }
+        
+        Array<string> getKeys() {
+            return parameters.getKeys();
+        }
+    }
+
+/**
+ * Event system for mission events
+ */
+class EventSystem {
+    private:
+        static EventSystem instance;
+        Object eventHandlers;
+        
+    private:
+        EventSystem() {
+            eventHandlers = Object();
+        }
+        
+    public:
+        static EventSystem& getInstance() {
+            return instance;
+        }
+        
+        void addEventListener(string eventName, Function handler) {
+            if (!eventHandlers.has(eventName)) {
+                eventHandlers.set(eventName, Array<Function>());
+            }
+            
+            Array<Function> handlers = eventHandlers.get(eventName).asArray();
+            handlers.push(handler);
+            eventHandlers.set(eventName, handlers);
+        }
+        
+        void removeEventListener(string eventName, Function handler) {
+            if (!eventHandlers.has(eventName)) {
+                return;
+            }
+            
+            Array<Function> handlers = eventHandlers.get(eventName).asArray();
+            Array<Function> newHandlers = Array<Function>();
+            
+            for (int i = 0; i < handlers.size(); i++) {
+                if (handlers[i] != handler) {
+                    newHandlers.push(handlers[i]);
+                }
+            }
+            
+            eventHandlers.set(eventName, newHandlers);
+        }
+        
+        void dispatchEvent(string eventName, Value eventData = null) {
+            if (!eventHandlers.has(eventName)) {
+                return;
+            }
+            
+            Array<Function> handlers = eventHandlers.get(eventName).asArray();
+            for (int i = 0; i < handlers.size(); i++) {
+                Function handler = handlers[i];
+                handler(eventData);
+            }
+        }
+        
+        void clearEventListeners(string eventName) {
+            if (eventHandlers.has(eventName)) {
+                eventHandlers.set(eventName, Array<Function>());
+            }
+        }
+        
+        void clearAllEventListeners() {
+            Array<string> eventNames = eventHandlers.getKeys();
+            for (int i = 0; i < eventNames.size(); i++) {
+                clearEventListeners(eventNames[i]);
+            }
+        }
+    }
+
+// =====================================================================
+// PHYSICS AND MATHEMATICS
+// =====================================================================
+
+/**
+ * Orbital state vector
+ */
+class StateVector {
+    public:
+        Vector3 position;    // Position vector (m)
+        Vector3 velocity;    // Velocity vector (m/s)
+        
+    public:
+        StateVector() {
+            position = Vector3(0, 0, 0);
+            velocity = Vector3(0, 0, 0);
+        }
+        
+        StateVector(Vector3 pos, Vector3 vel) {
+            position = pos;
+            velocity = vel;
+        }
+        
+        StateVector operator+(const StateVector& other) const {
+            return StateVector(position + other.position, velocity + other.velocity);
+        }
+        
+        StateVector operator*(double scalar) const {
+            return StateVector(position * scalar, velocity * scalar);
+        }
+        
+        string toString() const {
+            return "StateVector(position=" + position.toString() + 
+                   ", velocity=" + velocity.toString() + ")";
+        }
+    }
+
+/**
+ * Orbital elements class
+ */
+class OrbitalElements {
+    public:
+        double semiMajorAxis;    // Semi-major axis (m)
+        double eccentricity;     // Eccentricity
+        double inclination;      // Inclination (rad)
+        double raan;             // Right ascension of ascending node (rad)
+        double argumentOfPerigee;// Argument of perigee (rad)
+        double trueAnomaly;      // True anomaly (rad)
+        double mu;               // Gravitational parameter (m^3/s^2)
+        
+    public:
+        OrbitalElements() {
+            semiMajorAxis = 0.0;
+            eccentricity = 0.0;
+            inclination = 0.0;
+            raan = 0.0;
+            argumentOfPerigee = 0.0;
+            trueAnomaly = 0.0;
+            mu = Constants.EARTH_MU;
+        }
+        
+        OrbitalElements(double a, double e, double i, double omega, double w, double nu, double gravitationalParam) {
+            semiMajorAxis = a;
+            eccentricity = e;
+            inclination = i;
+            raan = omega;
+            argumentOfPerigee = w;
+            trueAnomaly = nu;
+            mu = gravitationalParam;
+        }
+        
+        // Convert orbital elements to state vector
+        StateVector toStateVector() {
+            // Calculate distance from focus to orbiting body
+            double r = semiMajorAxis * (1 - eccentricity * eccentricity) / (1 + eccentricity * cos(trueAnomaly));
+            
+            // Calculate position in orbital plane
+            double x = r * cos(trueAnomaly);
+            double y = r * sin(trueAnomaly);
+            
+            // Calculate velocity in orbital plane
+            double p = semiMajorAxis * (1 - eccentricity * eccentricity);
+            double h = sqrt(mu * p);
+            double vx = -mu / h * sin(trueAnomaly);
+            double vy = mu / h * (eccentricity + cos(trueAnomaly));
+            
+            // Rotation matrices
+            Matrix3 R3_W = Matrix3.rotationZ(raan);
+            Matrix3 R1_i = Matrix3.rotationX(inclination);
+            Matrix3 R3_w = Matrix3.rotationZ(argumentOfPerigee);
+            
+            // Combined rotation matrix
+            Matrix3 Q = R3_W * R1_i * R3_w;
+            
+            // Transform position and velocity to reference frame
+            Vector3 position = Q * Vector3(x, y, 0);
+            Vector3 velocity = Q * Vector3(vx, vy, 0);
+            
+            return StateVector(position, velocity);
+        }
+        
+        // Convert state vector to orbital elements
+        static OrbitalElements fromStateVector(StateVector state, double gravitationalParam) {
+            Vector3 r = state.position;
+            Vector3 v = state.velocity;
+            double mu = gravitationalParam;
+            
+            // Calculate angular momentum vector
+            Vector3 h = r.cross(v);
+            
+            // Calculate node vector
+            Vector3 n = Vector3(0, 0, 1).cross(h);
+            
+            // Calculate eccentricity vector
+            Vector3 e_vec = ((v.dot(v) - mu / r.length()) * r - r.dot(v) * v) / mu;
+            
+            // Calculate orbital elements
+            double a = -mu / (2 * (v.dot(v) / 2 - mu / r.length()));
+            double e = e_vec.length();
+            double i = acos(h.z / h.length());
+            
+            // Handle special cases
+            double omega, w, nu;
+            
+            if (n.length() < 1e-10) {
+                // Orbit is in xy-plane, no ascending node
+                omega = 0.0;
+                if (e < 1e-10) {
+                    // Circular orbit
+                    w = 0.0;
+                    nu = atan2(r.y, r.x);
+                } else {
+                    // Elliptical orbit
+                    w = atan2(e_vec.y, e_vec.x);
+                    nu = atan2(r.dot(h.cross(e_vec)) / h.length(), r.dot(e_vec));
+                }
+            } else {
+                omega = acos(n.x / n.length());
+                if (n.y < 0) omega = 2 * PI - omega;
+                
+                w = acos(n.dot(e_vec) / (n.length() * e));
+                if (e_vec.z < 0) w = 2 * PI - w;
+                
+                nu = acos(e_vec.dot(r) / (e * r.length()));
+                if (r.dot(v) < 0) nu = 2 * PI - nu;
+            }
+            
+            return OrbitalElements(a, e, i, omega, w, nu, mu);
+        }
+        
+        // Calculate period of orbit
+        double period() {
+            return 2 * PI * sqrt(pow(semiMajorAxis, 3) / mu);
+        }
+        
+        // Calculate specific energy of orbit
+        double specificEnergy() {
+            return -mu / (2 * semiMajorAxis);
+        }
+        
+        // Calculate radius at perigee
+        double radiusPerigee() {
+            return semiMajorAxis * (1 - eccentricity);
+        }
+        
+        // Calculate radius at apogee
+        double radiusApogee() {
+            return semiMajorAxis * (1 + eccentricity);
+        }
+        
+        string toString() const {
+            return "OrbitalElements(a=" + semiMajorAxis + 
+                   ", e=" + eccentricity + 
+                   ", i=" + inclination * Constants.RAD_TO_DEG + "°" +
+                   ", Ω=" + raan * Constants.RAD_TO_DEG + "°" +
+                   ", ω=" + argumentOfPerigee * Constants.RAD_TO_DEG + "°" +
+                   ", ν=" + trueAnomaly * Constants.RAD_TO_DEG + "°)";
+        }
+    }
+
+/**
+ * Numerical integrator for orbital propagation
+ */
+class Integrator {
+    public:
+        enum Method {
+            EULER,
+            RK4,
+            RK45,
+            ADAMS_BASHFORTH
+        }
+        
+    private:
+        Method method;
+        double stepSize;
+        double minStepSize;
+        double maxStepSize;
+        double errorTolerance;
+        
+    public:
+        Integrator(Method m = Method.RK4, double step = 1.0, double minStep = 0.01, 
+                  double maxStep = 10.0, double tolerance = 1e-8) {
+            method = m;
+            stepSize = step;
+            minStepSize = minStep;
+            maxStepSize = maxStep;
+            errorTolerance = tolerance;
+        }
+        
+        // Integrate state vector using selected method
+        StateVector integrate(StateVector initialState, Function derivativeFunc, double t0, double tf) {
+            switch (method) {
+                case Method.EULER:
+                    return integrateEuler(initialState, derivativeFunc, t0, tf);
+                case Method.RK4:
+                    return integrateRK4(initialState, derivativeFunc, t0, tf);
+                case Method.RK45:
+                    return integrateRK45(initialState, derivativeFunc, t0, tf);
+                case Method.ADAMS_BASHFORTH:
+                    return integrateAdamsBashforth(initialState, derivativeFunc, t0, tf);
+                default:
+                    return integrateRK4(initialState, derivativeFunc, t0, tf);
+            }
+        }
+        
+    private:
+        // Euler method
+        StateVector integrateEuler(StateVector initialState, Function derivativeFunc, double t0, double tf) {
+            double t = t0;
+            StateVector state = initialState;
+            
+            while (t < tf) {
+                double dt = min(stepSize, tf - t);
+                StateVector derivative = derivativeFunc(t, state);
+                state = state + derivative * dt;
+                t += dt;
+            }
+            
+            return state;
+        }
+        
+        // 4th order Runge-Kutta method
+        StateVector integrateRK4(StateVector initialState, Function derivativeFunc, double t0, double tf) {
+            double t = t0;
+            StateVector state = initialState;
+            
+            while (t < tf) {
+                double dt = min(stepSize, tf - t);
+                
+                StateVector k1 = derivativeFunc(t, state);
+                StateVector k2 = derivativeFunc(t + dt/2, state + k1 * (dt/2));
+                StateVector k3 = derivativeFunc(t + dt/2, state + k2 * (dt/2));
+                StateVector k4 = derivativeFunc(t + dt, state + k3 * dt);
+                
+                state = state + (k1 + k2 * 2 + k3 * 2 + k4) * (dt/6);
+                t += dt;
+            }
+            
+            return state;
+        }
+        
+        // Runge-Kutta-Fehlberg (RK45) method with adaptive step size
+        StateVector integrateRK45(StateVector initialState, Function derivativeFunc, double t0, double tf) {
+            double t = t0;
+            StateVector state = initialState;
+            double dt = stepSize;
+            
+            while (t < tf) {
+                dt = min(dt, tf - t);
+                
+                // 5th order RK coefficients
+                StateVector k1 = derivativeFunc(t, state);
+                StateVector k2 = derivativeFunc(t + dt * 1/4, state + k1 * (dt/4));
+                StateVector k3 = derivativeFunc(t + dt * 3/8, state + k1 * (dt*3/32) + k2 * (dt*9/32));
+                StateVector k4 = derivativeFunc(t + dt * 12/13, state + k1 * (dt*1932/2197) - k2 * (dt*7200/2197) + k3 * (dt*7296/2197));
+                StateVector k5 = derivativeFunc(t + dt, state + k1 * (dt*439/216) - k2 * (dt*8) + k3 * (dt*3680/513) - k4 * (dt*845/4104));
+                StateVector k6 = derivativeFunc(t + dt * 1/2, state - k1 * (dt*8/27) + k2 * (dt*2) - k3 * (dt*3544/2565) + k4 * (dt*1859/4104) - k5 * (dt*11/40));
+                
+                // 4th order solution
+                StateVector y4 = state + k1 * (dt*25/216) + k3 * (dt*1408/2565) + k4 * (dt*2197/4104) - k5 * (dt/5);
+                
+                // 5th order solution
+                StateVector y5 = state + k1 * (dt*16/135) + k3 * (dt*6656/12825) + k4 * (dt*28561/56430) - k5 * (dt*9/50) + k6 * (dt*2/55);
+                
+                // Error estimation
+                double error = (y5.position - y4.position).length() + (y5.velocity - y4.velocity).length();
+                
+                // Adaptive step size control
+                double s = 0.84 * pow(errorTolerance / (error + 1e-15), 0.25);
+                
+                if (error <= errorTolerance) {
+                    // Step is accepted
+                    state = y5;
+                    t += dt;
+                    
+                    // Update step size for next iteration
+                    dt = min(maxStepSize, max(minStepSize, s * dt));
+                } else {
+                    // Step is rejected, reduce step size and retry
+                    dt = max(minStepSize, s * dt);
+                }
+            }
+            
+            return state;
+        }
+        
+        // Adams-Bashforth method (4th order)
+        StateVector integrateAdamsBashforth(StateVector initialState, Function derivativeFunc, double t0, double tf) {
+            double t = t0;
+            StateVector state = initialState;
+            
+            // Need 4 previous derivatives for 4th order method
+            // Initialize with RK4 steps
+            Array<StateVector> derivatives;
+            
+            // First step with RK4
+            double dt = min(stepSize, tf - t);
+            StateVector k1 = derivativeFunc(t, state);
+            StateVector k2 = derivativeFunc(t + dt/2, state + k1 * (dt/2));
+            StateVector k3 = derivativeFunc(t + dt/2, state + k2 * (dt/2));
+            StateVector k4 = derivativeFunc(t + dt, state + k3 * dt);
+            
+            state = state + (k1 + k2 * 2 + k3 * 2 + k4) * (dt/6);
+            t += dt;
+            
+            // Store derivatives
+            derivatives.push(k1);
+            derivatives.push(derivativeFunc(t - 3*dt/4, state));
+            derivatives.push(derivativeFunc(t - dt/2, state));
+            derivatives.push(derivativeFunc(t - dt/4, state));
+            
+            // Main integration loop
+            while (t < tf) {
+                dt = min(stepSize, tf - t);
+                
+                // Adams-Bashforth 4th order formula
+                state = state + (
+                    derivatives[3] * (55/24) -
+                    derivatives[2] * (59/24) +
+                    derivatives[1] * (37/24) -
+                    derivatives[0] * (9/24)
+                ) * dt;
+                
+                t += dt;
+                
+                // Update derivatives array
+                derivatives.removeAt(0);
+                derivatives.push(derivativeFunc(t, state));
+            }
+            
+            return state;
+        }
+    }
+
+/**
+ * Coordinate transformation utilities
+ */
+class CoordinateTransform {
+    public:
+        // Convert Earth-Centered Inertial (ECI) to Earth-Centered Earth-Fixed (ECEF)
+        static Vector3 eciToEcef(Vector3 positionEci, double julianDate) {
+            // Calculate Greenwich Mean Sidereal Time (GMST)
+            double t = (julianDate - 2451545.0) / 36525.0; // Julian centuries since J2000
+            double gmst = 67310.54841 + 
+                          (876600.0 * 3600.0 + 8640184.812866) * t + 
+                          0.093104 * t * t - 
+                          6.2e-6 * t * t * t;
+            
+            // Convert to degrees and normalize to [0, 360)
+            gmst = fmod(gmst / 240.0, 360.0); // GMST in degrees
+            if (gmst < 0) gmst += 360.0;
+            
+            // Convert to radians
+            double angle = gmst * Constants.DEG_TO_RAD;
+            
+            // Rotation matrix around Z-axis
+            Matrix3 rotationMatrix = Matrix3.rotationZ(angle);
+            
+            // Apply rotation
+            return rotationMatrix * positionEci;
+        }
+        
+        // Convert Earth-Centered Earth-Fixed (ECEF) to Earth-Centered Inertial (ECI)
+        static Vector3 ecefToEci(Vector3 positionEcef, double julianDate) {
+            // Calculate Greenwich Mean Sidereal Time (GMST)
+            double t = (julianDate - 2451545.0) / 36525.0; // Julian centuries since J2000
+            double gmst = 67310.54841 + 
+                          (876600.0 * 3600.0 + 8640184.812866) * t + 
+                          0.093104 * t * t - 
+                          6.2e-6 * t * t * t;
+            
+            // Convert to degrees and normalize to [0, 360)
+            gmst = fmod(gmst / 240.0, 360.0); // GMST in degrees
+            if (gmst < 0) gmst += 360.0;
+            
+            // Convert to radians
+            double angle = gmst * Constants.DEG_TO_RAD;
+            
+            // Rotation matrix around Z-axis (inverse of ECI to ECEF)
+            Matrix3 rotationMatrix = Matrix3.rotationZ(-angle);
+            
+            // Apply rotation
+            return rotationMatrix * positionEcef;
+        }
+        
+        // Convert ECEF to Geodetic (latitude, longitude, altitude)
+        static Vector3 ecefToGeodetic(Vector3 positionEcef) {
+            double x = positionEcef.x;
+            double y = positionEcef.y;
+            double z = positionEcef.z;
+            
+            double a = Constants.EARTH_RADIUS; // Earth's semi-major axis
+            double f = 1/298.257223563; // Earth's flattening
+            double b = a * (1 - f); // Earth's semi-minor axis
+            double e2 = 1 - (b*b)/(a*a); // Square of eccentricity
+            
+            double lon = atan2(y, x);
+            
+            // Initial values
+            double p = sqrt(x*x + y*y);
+            double theta = atan2(z*a, p*b);
+            
+            // Calculate latitude
+            double lat = atan2(
+                z + e2*e2*b*pow(sin(theta), 3),
+                p - e2*a*pow(cos(theta), 3)
+            );
+            
+            // Calculate altitude
+            double N = a / sqrt(1 - e2*sin(lat)*sin(lat)); // Radius of curvature in the prime vertical
+            double alt = p/cos(lat) - N;
+            
+            // Convert to degrees
+            lat *= Constants.RAD_TO_DEG;
+            lon *= Constants.RAD_TO_DEG;
+            
+            return Vector3(lat, lon, alt);
+        }
+        
+        // Convert Geodetic (latitude, longitude, altitude) to ECEF
+        static Vector3 geodeticToEcef(Vector3 positionGeodetic) {
+            double lat = positionGeodetic.x * Constants.DEG_TO_RAD;
+            double lon = positionGeodetic.y * Constants.DEG_TO_RAD;
+            double alt = positionGeodetic.z;
+            
+            double a = Constants.EARTH_RADIUS; // Earth's semi-major axis
+            double f = 1/298.257223563; // Earth's flattening
+            double e2 = 2*f - f*f; // Square of eccentricity
+            
+            double N = a / sqrt(1 - e2*sin(lat)*sin(lat)); // Radius of curvature in the prime vertical
+            
+            double x = (N + alt) * cos(lat) * cos(lon);
+            double y = (N + alt) * cos(lat) * sin(lon);
+            double z = (N*(1-e2) + alt) * sin(lat);
+            
+            return Vector3(x, y, z);
+        }
+        
+        // Convert ECI to Geodetic
+        static Vector3 eciToGeodetic(Vector3 positionEci, double julianDate) {
+            Vector3 positionEcef = eciToEcef(positionEci, julianDate);
+            return ecefToGeodetic(positionEcef);
+        }
+        
+        // Convert Geodetic to ECI
+        static Vector3 geodeticToEci(Vector3 positionGeodetic, double julianDate) {
+            Vector3 positionEcef = geodeticToEcef(positionGeodetic);
+            return ecefToEci(positionEcef, julianDate);
+        }
+    }
+
+/**
+ * Orbital propagator for spacecraft trajectory
+ */
+class OrbitalPropagator {
+    private:
+        Integrator integrator;
+        bool useJ2Perturbation;
+        bool useAtmosphericDrag;
+        bool useSolarRadiationPressure;
+        bool useThirdBodyPerturbation;
+        
+    public:
+        OrbitalPropagator() {
+            integrator = Integrator(Integrator.Method.RK45);
+            useJ2Perturbation = true;
+            useAtmosphericDrag = true;
+            useSolarRadiationPressure = true;
+            useThirdBodyPerturbation = true;
+        }
+        
+        void setIntegrator(Integrator integ) {
+            integrator = integ;
+        }
+        
+        void enableJ2Perturbation(bool enable) {
+            useJ2Perturbation = enable;
+        }
+        
+        void enableAtmosphericDrag(bool enable) {
+            useAtmosphericDrag = enable;
+        }
+        
+        void enableSolarRadiationPressure(bool enable) {
+            useSolarRadiationPressure = enable;
+        }
+        
+        void enableThirdBodyPerturbation(bool enable) {
+            useThirdBodyPerturbation = enable;
+        }
+        
+        // Propagate orbit from initial state to specified time
+        StateVector propagate(StateVector initialState, double t0, double tf, double mu = Constants.EARTH_MU) {
+            return integrator.integrate(initialState, (t, state) => calculateDerivative(t, state, mu), t0, tf);
+        }
+        
+        // Calculate state vector derivative for integration
+        StateVector calculateDerivative(double t, StateVector state, double mu) {
+            Vector3 r = state.position;
+            Vector3 v = state.velocity;
+            
+            double r_mag = r.length();
+            
+            // Two-body acceleration
+            Vector3 a_gravity = -mu * r / (r_mag * r_mag * r_mag);
+            
+            // J2 perturbation
+            Vector3 a_j2 = Vector3(0, 0, 0);
+            if (useJ2Perturbation && mu == Constants.EARTH_MU) {
+                double J2 = Constants.EARTH_J2;
+                double R = Constants.EARTH_RADIUS;
+                
+                double r2 = r_mag * r_mag;
+                double factor = 3.0 * J2 * mu * R * R / (2.0 * r2 * r2 * r_mag);
+                
+                double x = r.x;
+                double y = r.y;
+                double z = r.z;
+                
+                a_j2.x = factor * x * (5 * z * z / r2 - 1);
+                a_j2.y = factor * y * (5 * z * z / r2 - 1);
+                a_j2.z = factor * z * (5 * z * z / r2 - 3);
+            }
+            
+            // Atmospheric drag
+            Vector3 a_drag = Vector3(0, 0, 0);
+            if (useAtmosphericDrag && mu == Constants.EARTH_MU) {
+                double altitude = r_mag - Constants.EARTH_RADIUS;
+                
+                if (altitude < Constants.EARTH_ATMOSPHERE_HEIGHT) {
+                    // Simple exponential atmospheric model
+                    double rho0 = 1.225; // kg/m^3 at sea level
+                    double h0 = 8500.0;  // scale height in m
+                    double rho = rho0 * exp(-altitude / h0);
+                    
+                    // Spacecraft parameters (should be passed as parameters in a real implementation)
+                    double Cd = 2.2;     // Drag coefficient
+                    double A = 10.0;     // Cross-sectional area in m^2
+                    double m = 5000.0;   // Mass in kg
+                    
+                    // Relative velocity (assuming Earth rotation)
+                    Vector3 omega_earth = Vector3(0, 0, Constants.EARTH_ROTATION_RATE);
+                    Vector3 v_rel = v - omega_earth.cross(r);
+                    double v_rel_mag = v_rel.length();
+                    
+                    // Drag acceleration
+                    a_drag = -0.5 * rho * Cd * A / m * v_rel_mag * v_rel;
+                }
+            }
+            
+            // Solar radiation pressure
+            Vector3 a_srp = Vector3(0, 0, 0);
+            if (useSolarRadiationPressure) {
+                // Simplified model, should calculate actual Sun position in a real implementation
+                Vector3 r_sun = Vector3(Constants.AU, 0, 0); // Assuming Sun along x-axis
+                Vector3 r_sat_sun = r - r_sun;
+                double r_sat_sun_mag = r_sat_sun.length();
+                
+                // Check if satellite is in Earth's shadow
+                double dot_product = r.dot(r_sat_sun);
+                bool in_shadow = dot_product > 0 && dot_product * dot_product > r_mag * r_mag * (1 - Constants.EARTH_RADIUS * Constants.EARTH_RADIUS / (r_sat_sun_mag * r_sat_sun_mag));
+                
+                if (!in_shadow) {
+                    // Solar radiation pressure at 1 AU
+                    double P_sr = 4.56e-6; // N/m^2
+                    
+                    // Spacecraft parameters
+                    double Cr = 1.8;     // Radiation pressure coefficient
+                    double A = 10.0;     // Cross-sectional area in m^2
+                    double m = 5000.0;   // Mass in kg
+                    
+                    // Scale pressure by distance from Sun
+                    double scale_factor = Constants.AU * Constants.AU / (r_sat_sun_mag * r_sat_sun_mag);
+                    
+                    // SRP acceleration
+                    a_srp = -P_sr * Cr * A / m * scale_factor * r_sat_sun / r_sat_sun_mag;
+                }
+            }
+            
+            // Third-body perturbation (Moon)
+            Vector3 a_moon = Vector3(0, 0, 0);
+            if (useThirdBodyPerturbation) {
+                // Simplified model, should calculate actual Moon position in a real implementation
+                // This is a very basic approximation
+                double moon_angle = 2 * PI * t / Constants.MOON_ORBITAL_PERIOD;
+                Vector3 r_moon = Vector3(
+                    Constants.MOON_DISTANCE * cos(moon_angle),
+                    Constants.MOON_DISTANCE * sin(moon_angle),
+                    0
+                );
+                
+                Vector3 r_sat_moon = r - r_moon;
+                double r_sat_moon_mag = r_sat_moon.length();
+                double r_moon_mag = r_moon.length();
+                
+                a_moon = -Constants.MOON_MU * (
+                    r_sat_moon / (r_sat_moon_mag * r_sat_moon_mag * r_sat_moon_mag) -
+                    r_moon / (r_moon_mag * r_moon_mag * r_moon_mag)
+                );
+            }
+            
+            // Sum all accelerations
+            Vector3 acceleration = a_gravity + a_j2 + a_drag + a_srp + a_moon;
+            
+            // Return state derivative
+            return StateVector(v, acceleration);
+        }
+    }
+
+/**
+ * Maneuver planning and optimization
+ */
+class ManeuverPlanner {
+    private:
+        OrbitalPropagator propagator;
+        
+    public:
+        ManeuverPlanner() {
+            propagator = OrbitalPropagator();
+        }
+        
+        // Calculate delta-V for Hohmann transfer between circular orbits
+        double calculateHohmannTransferDeltaV(double r1, double r2, double mu = Constants.EARTH_MU) {
+            double dv1 = sqrt(mu / r1) * (sqrt(2 * r2 / (r1 + r2)) - 1);
+            double dv2 = sqrt(mu / r2) * (1 - sqrt(2 * r1 / (r1 + r2)));
+            return abs(dv1) + abs(dv2);
+        }
+        
+        // Calculate delta-V for bi-elliptic transfer between circular orbits
+        double calculateBiEllipticTransferDeltaV(double r1, double r2, double r_intermediate, double mu = Constants.EARTH_MU) {
+            double dv1 = sqrt(mu / r1) * (sqrt(2 * r_intermediate / (r1 + r_intermediate)) - 1);
+            double dv2 = sqrt(mu / r_intermediate) * (sqrt(2 * r_intermediate / (r2 + r_intermediate)) - sqrt(2 * r_intermediate / (r1 + r_intermediate)));
+            double dv3 = sqrt(mu / r2) * (1 - sqrt(2 * r_intermediate / (r2 + r_intermediate)));
+            return abs(dv1) + abs(dv2) + abs(dv3);
+        }
+        
+        // Calculate delta-V for plane change
+        double calculatePlaneChangeDeltaV(double v, double angle) {
+            return 2 * v * sin(angle / 2);
+        }
+        
+        // Calculate delta-V for combined plane change and Hohmann transfer
+        double calculateCombinedManeuverDeltaV(double r1, double r2, double angle, double mu = Constants.EARTH_MU) {
+            double v1 = sqrt(mu / r1);
+            double v2 = sqrt(mu / r2);
+            double v_transfer_perigee = sqrt(2 * mu / r1 - mu / (r1 + r2) / 2);
+            double v_transfer_apogee = sqrt(2 * mu / r2 - mu / (r1 + r2) / 2);
+            
+            // Option 1: Plane change at perigee
+            double dv_option1 = sqrt(v1*v1 + v_transfer_perigee*v_transfer_perigee - 2*v1*v_transfer_perigee*cos(angle)) + abs(v2 - v_transfer_apogee);
+            
+            // Option 2: Plane change at apogee
+            double dv_option2 = abs(v_transfer_perigee - v1) + sqrt(v2*v2 + v_transfer_apogee*v_transfer_apogee - 2*v2*v_transfer_apogee*cos(angle));
+            
+            // Option 3: Split plane change
+            // This is a complex optimization problem, simplified here
+            double optimal_split = 0.5; // This should be optimized in a real implementation
+            double angle1 = angle * optimal_split;
+            double angle2 = angle * (1 - optimal_split);
+            
+            double dv_perigee = sqrt(v1*v1 + v_transfer_perigee*v_transfer_perigee - 2*v1*v_transfer_perigee*cos(angle1));
+            double dv_apogee = sqrt(v2*v2 + v_transfer_apogee*v_transfer_apogee - 2*v2*v_transfer_apogee*cos(angle2));
+            double dv_option3 = dv_perigee + dv_apogee;
+            
+            return min(min(dv_option1, dv_option2), dv_option3);
+        }
+        
+        // Calculate optimal departure time for interplanetary transfer
+        double calculateOptimalDepartureTime(double departureEarliest, double departureLatest, double arrivalEarliest, double arrivalLatest, 
+                                           Vector3 originPosition, Vector3 targetPosition, double mu = Constants.SUN_MU) {
+            // This would be a complex optimization problem in a real implementation
+            // Simplified version here
+            double bestDepartureTime = departureEarliest;
+            double minDeltaV = 1e10;
+            
+            for (double departureTime = departureEarliest; departureTime <= departureLatest; departureTime += 86400) {
+                for (double timeOfFlight = 86400; timeOfFlight <= arrivalLatest - departureTime; timeOfFlight += 86400) {
+                    double arrivalTime = departureTime + timeOfFlight;
+                    if (arrivalTime >= arrivalEarliest && arrivalTime <= arrivalLatest) {
+                        // Calculate positions at departure and arrival
+                        // This is simplified, should use actual ephemeris in a real implementation
+                        Vector3 r1 = originPosition;
+                        Vector3 r2 = targetPosition;
+                        
+                        // Calculate Lambert solution
+                        double deltaV = calculateLambertDeltaV(r1, r2, timeOfFlight, mu);
+                        
+                        if (deltaV < minDeltaV) {
+                            minDeltaV = deltaV;
+                            bestDepartureTime = departureTime;
+                        }
+                    }
+                }
+            }
+            
+            return bestDepartureTime;
+        }
+        
+        // Calculate delta-V for Lambert transfer
+        double calculateLambertDeltaV(Vector3 r1, Vector3 r2, double timeOfFlight, double mu = Constants.SUN_MU) {
+            // This would be a complex calculation in a real implementation
+            // Simplified version here
+            double r1_mag = r1.length();
+            double r2_mag = r2.length();
+            double cos_dnu = r1.dot(r2) / (r1_mag * r2_mag);
+            double dnu = acos(cos_dnu);
+            
+            // Check if transfer is more than 180 degrees
+            Vector3 h = r1.cross(r2);
+            if (h.z < 0) {
+                dnu = 2 * PI - dnu;
+            }
+            
+            // Estimate semi-major axis using Lambert's equation
+            double a = (r1_mag + r2_mag + sqrt(r1_mag*r1_mag + r2_mag*r2_mag - 2*r1_mag*r2_mag*cos(dnu))) / 4;
+            
+            // Calculate velocities
+            double v1_mag = sqrt(2 * mu / r1_mag - mu / a);
+            double v2_mag = sqrt(2 * mu / r2_mag - mu / a);
+            
+            // Assume initial and final velocities are circular
+            double v_initial = sqrt(mu / r1_mag);
+            double v_final = sqrt(mu / r2_mag);
+            
+            return abs(v1_mag - v_initial) + abs(v2_mag - v_final);
+        }
+        
+        // Optimize mid-course correction
+        Vector3 optimizeMidCourseCorrection(StateVector currentState, StateVector targetState, double timeToTarget, double maxDeltaV, double mu = Constants.EARTH_MU) {
+            // This would be a complex optimization problem in a real implementation
+            // Simplified version here
+            
+            // Propagate current state to target time
+            StateVector propagatedState = propagator.propagate(currentState, 0, timeToTarget, mu);
+            
+            // Calculate position error
+            Vector3 positionError = targetState.position - propagatedState.position;
+            
+            // Simple correction proportional to error
+            Vector3 correction = positionError * 0.1;
+            
+            // Limit correction to max delta-V
+            double correctionMag = correction.length();
+            if (correctionMag > maxDeltaV) {
+                correction = correction * (maxDeltaV / correctionMag);
+            }
+            
+            return correction;
+        }
+    }
+
+// =====================================================================
+// SPACECRAFT SYSTEMS
+// =====================================================================
+
+/**
+ * Base class for all spacecraft systems
+ */
+class SpacecraftSystem {
+    protected:
+        string name;
+        bool isActive;
+        double powerConsumption; // Watts
+        double reliability;      // 0.0 to 1.0
+        Array<string> faults;
+        
+    public:
+        SpacecraftSystem(string systemName, double power = 0.0, double rel = 0.999) {
+            name = systemName;
+            isActive = false;
+            powerConsumption = power;
+            reliability = rel;
+            faults = Array<string>();
+        }
+        
+        virtual void activate() {
+            isActive = true;
+            Logger.getInstance().log(name + " system activated");
+        }
+        
+        virtual void deactivate() {
+            isActive = false;
+            Logger.getInstance().log(name + " system deactivated");
+        }
+        
+        bool isSystemActive() {
+            return isActive;
+        }
+        
+        string getName() {
+            return name;
+        }
+        
+        double getPowerConsumption() {
+            return isActive ? powerConsumption : 0.0;
+        }
+        
+        void addFault(string faultDescription) {
+            faults.push(faultDescription);
+            Logger.getInstance().log("FAULT: " + name + " - " + faultDescription, "ERROR");
+        }
+        
+        void clearFault(string faultDescription) {
+            for (int i = 0; i < faults.size(); i++) {
+                if (faults[i] == faultDescription) {
+                    faults.removeAt(i);
+                    Logger.getInstance().log("Fault cleared: " + name + " - " + faultDescription);
+                    return;
+                }
+            }
+        }
+        
+        bool hasFaults() {
+            return faults.size() > 0;
+        }
+        
+        Array<string> getFaults() {
+            return faults;
+        }
+        
+        virtual void update(double dt) {
+            // Base update method, to be overridden by derived classes
+            
+            // Random fault simulation
+            if (ConfigurationManager.getInstance().get<bool>("faults.enabled", true)) {
+                double faultProbability = ConfigurationManager.getInstance().get<double>("faults.probability", 0.01);
+                
+                if (Random.nextDouble() < faultProbability * dt / 3600.0) {
+                    // Generate a fault
+                    double severityRoll = Random.nextDouble();
+                    
+                    if (severityRoll < ConfigurationManager.getInstance().get<double>("faults.severity.high", 0.05)) {
+                        addFault("Critical system failure");
+                        deactivate();
+                    } else if (severityRoll < ConfigurationManager.getInstance().get<double>("faults.severity.medium", 0.25)) {
+                        addFault("System performance degraded");
+                    } else {
+                        addFault("Minor system anomaly");
+                    }
+                }
+            }
+        }
+        
+        virtual Object getStatus() {
+            Object status = Object();
+            status.set("name", name);
+            status.set("active", isActive);
+            status.set("power", getPowerConsumption());
+            status.set("faults", faults);
+            return status;
+        }
+    }
+
+/**
+ * Propulsion system
+ */
+class PropulsionSystem : SpacecraftSystem {
+    private:
+        double maxThrust;       // Newtons
+        double specificImpulse; // seconds
+        double propellantMass;  // kg
+        double initialPropellantMass; // kg
+        bool isThrusting;
+        double currentThrust;   // Newtons
+        Vector3 thrustDirection;
+        
+    public:
+        PropulsionSystem(string name, double thrust, double isp, double propellant, double power = 100.0)
+            : SpacecraftSystem(name, power) {
+            maxThrust = thrust;
+            specificImpulse = isp;
+            propellantMass = propellant;
+            initialPropellantMass = propellant;
+            isThrusting = false;
+            currentThrust = 0.0;
+            thrustDirection = Vector3(1, 0, 0); // Default thrust along x-axis
+        }
+        
+        void startThrust(double thrustLevel = 1.0, Vector3 direction = Vector3(1, 0, 0)) {
+            if (!isActive) {
+                Logger.getInstance().log("Cannot start thrust: " + name + " system is not active", "WARNING");
+                return;
+            }
+            
+            if (propellantMass <= 0) {
+                Logger.getInstance().log("Cannot start thrust: " + name + " has no propellant remaining", "WARNING");
+                return;
+            }
+            
+            thrustLevel = max(0.0, min(1.0, thrustLevel));
+            currentThrust = maxThrust * thrustLevel;
+            thrustDirection = direction.normalize();
+            isThrusting = true;
+            
+            Logger.getInstance().log(name + " thrust started at " + (thrustLevel * 100) + "% (" + currentThrust + " N)");
+        }
+        
+        void stopThrust() {
+            if (isThrusting) {
+                isThrusting = false;
+                currentThrust = 0.0;
+                Logger.getInstance().log(name + " thrust stopped");
+            }
+        }
+        
+        void setThrustDirection(Vector3 direction) {
+            thrustDirection = direction.normalize();
+        }
+        
+        Vector3 getThrustDirection() {
+            return thrustDirection;
+        }
+        
+        double getCurrentThrust() {
+            return currentThrust;
+        }
+        
+        bool isEngineThrusting() {
+            return isThrusting;
+        }
+        
+        double getPropellantMass() {
+            return propellantMass;
+        }
+        
+        double getPropellantPercentage() {
+            return propellantMass / initialPropellantMass * 100.0;
+        }
+        
+        double getSpecificImpulse() {
+            return specificImpulse;
+        }
+        
+        double getMaxThrust() {
+            return maxThrust;
+        }
+        
+        void consumePropellant(double mass) {
+            propellantMass = max(0.0, propellantMass - mass);
+            
+            if (propellantMass == 0 && isThrusting) {
+                stopThrust();
+                Logger.getInstance().log(name + " out of propellant", "WARNING");
+            }
+        }
+        
+        Vector3 calculateThrustAcceleration(double mass) {
+            if (!isThrusting || currentThrust == 0) {
+                return Vector3(0, 0, 0);
+            }
+            
+            return thrustDirection * (currentThrust / mass);
+        }
+        
+        void update(double dt) override {
+            SpacecraftSystem.update(dt);
+            
+            if (isThrusting && isActive) {
+                // Calculate propellant consumption
+                double mdot = currentThrust / (specificImpulse * 9.81); // kg/s
+                double propellantConsumed = mdot * dt;
+                
+                consumePropellant(propellantConsumed);
+                
+                // Check if we've run out of propellant
+                if (propellantMass == 0) {
+                    stopThrust();
+                }
+            }
+        }
+        
+        Object getStatus() override {
+            Object status = SpacecraftSystem.getStatus();
+            status.set("thrust", currentThrust);
+            status.set("thrusting", isThrusting);
+            status.set("direction", thrustDirection);
+            status.set("propellant", propellantMass);
+            status.set("propellant_percent", getPropellantPercentage());
+            status.set("isp", specificImpulse);
+            return status;
+        }
+    }
+
+/**
+ * Guidance, Navigation, and Control (GNC) system
+ */
+class GNCSystem : SpacecraftSystem {
+    private:
+        StateVector currentState;
+        Quaternion attitude;
+        Vector3 angularVelocity;
+        bool attitudeControlEnabled;
+        Quaternion targetAttitude;
+        double attitudeControlAccuracy; // rad
+        
+    public:
+        GNCSystem(string name, double power = 50.0)
+            : SpacecraftSystem(name, power) {
+            currentState = StateVector();
+            attitude = Quaternion(1, 0, 0, 0); // Identity quaternion
+            angularVelocity = Vector3(0, 0, 0);
+            attitudeControlEnabled = false;
+            targetAttitude = Quaternion(1, 0, 0, 0);
+            attitudeControlAccuracy = 0.001; // ~0.06 degrees
+        }
+        
+        void setCurrentState(StateVector state) {
+            currentState = state;
+        }
+        
+        StateVector getCurrentState() {
+            return currentState;
+        }
+        
+        void setAttitude(Quaternion newAttitude) {
+            attitude = newAttitude.normalize();
+        }
+        
+        Quaternion getAttitude() {
+            return attitude;
+        }
+        
+        void setAngularVelocity(Vector3 omega) {
+            angularVelocity = omega;
+        }
+        
+        Vector3 getAngularVelocity() {
+            return angularVelocity;
+        }
+        
+        void enableAttitudeControl() {
+            attitudeControlEnabled = true;
+            Logger.getInstance().log(name + " attitude control enabled");
+        }
+        
+        void disableAttitudeControl() {
+            attitudeControlEnabled = false;
+            Logger.getInstance().log(name + " attitude control disabled");
+        }
+        
+        bool isAttitudeControlEnabled() {
+            return attitudeControlEnabled;
+        }
+        
+        void setTargetAttitude(Quaternion target) {
+            targetAttitude = target.normalize();
+            Logger.getInstance().log(name + " target attitude set");
+        }
+        
+        Quaternion getTargetAttitude() {
+            return targetAttitude;
+        }
+        
+        bool isAttitudeWithinTolerance() {
+            double angle = acos(min(1.0, abs(attitude.dot(targetAttitude)))) * 2.0;
+            return angle <= attitudeControlAccuracy;
+        }
+        
+        Vector3 calculateAttitudeError() {
+            // Calculate error quaternion
+            Quaternion errorQuat = targetAttitude * attitude.conjugate();
+            
+            // Convert to axis-angle representation
+            Vector3 axis;
+            double angle;
+            errorQuat.toAxisAngle(axis, angle);
+            
+            // Return error vector (direction to rotate, magnitude is angle)
+            return axis * angle;
+        }
+        
+        Vector3 calculateControlTorque() {
+            if (!attitudeControlEnabled) {
+                return Vector3(0, 0, 0);
+            }
+            
+            // PD controller for attitude
+            Vector3 attitudeError = calculateAttitudeError();
+            
+            // Control gains (should be tuned for the specific spacecraft)
+            double Kp = 0.1;
+            double Kd = 0.2;
+            
+            // Calculate control torque
+            Vector3 torque = attitudeError * Kp - angularVelocity * Kd;
+            
+            // Limit maximum torque (should be based on actual RCS capabilities)
+            double maxTorque = 10.0; // Nm
+            double torqueMagnitude = torque.length();
+            
+            if (torqueMagnitude > maxTorque) {
+                torque = torque * (maxTorque / torqueMagnitude);
+            }
+            
+            return torque;
+        }
+        
+        void update(double dt) override {
+            SpacecraftSystem.update(dt);
+            
+            if (!isActive) {
+                return;
+            }
+            
+            // Update attitude based on angular velocity
+            if (angularVelocity.length() > 0) {
+                double angle = angularVelocity.length() * dt;
+                Vector3 axis = angularVelocity.normalize();
+                
+                Quaternion deltaQ = Quaternion.fromAxisAngle(axis, angle);
+                attitude = (deltaQ * attitude).normalize();
+            }
+            
+            // Attitude control
+            if (attitudeControlEnabled) {
+                Vector3 torque = calculateControlTorque();
+                
+                // Apply torque (simplified model, should use actual spacecraft inertia tensor)
+                // Assuming diagonal inertia tensor for simplicity
+                Vector3 inertia = Vector3(100, 100, 100); // kg*m^2
+                
+                Vector3 angularAcceleration = Vector3(
+                    torque.x / inertia.x,
+                    torque.y / inertia.y,
+                    torque.z / inertia.z
+                );
+                
+                angularVelocity = angularVelocity + angularAcceleration * dt;
+                
+                // Apply damping
+                double damping = 0.99;
+                angularVelocity = angularVelocity * damping;
+            }
+        }
+        
+        Object getStatus() override {
+            Object status = SpacecraftSystem.getStatus();
+            status.set("position", currentState.position);
+            status.set("velocity", currentState.velocity);
+            status.set("attitude", attitude);
+            status.set("angular_velocity", angularVelocity);
+            status.set("attitude_control", attitudeControlEnabled);
+            status.set("target_attitude", targetAttitude);
+            status.set("attitude_error", calculateAttitudeError().length() * Constants.RAD_TO_DEG);
+            return status;
+        }
+    }
+
+/**
+ * Power system
+ */
+class PowerSystem : SpacecraftSystem {
+    private:
+        double totalCapacity;     // Watt-hours
+        double currentCapacity;   // Watt-hours
+        double generationRate;    // Watts
+        double currentGeneration; // Watts
+        double currentLoad;       // Watts
+        bool lowPowerMode;
+        
+    public:
+        PowerSystem(string name, double capacity, double generation, double power = 10.0)
+            : SpacecraftSystem(name, power) {
+            totalCapacity = capacity;
+            currentCapacity = capacity;
+            generationRate = generation;
+            currentGeneration = 0.0;
+            currentLoad = 0.0;
+            lowPowerMode = false;
+        }
+        
+        void setGenerationRate(double rate) {
+            generationRate = max(0.0, rate);
+        }
+        
+        double getGenerationRate() {
+            return generationRate;
+        }
+        
+        double getCurrentGeneration() {
+            return currentGeneration;
+        }
+        
+        void setCurrentLoad(double load) {
+            currentLoad = max(0.0, load);
+            
+            // Check if we need to enter low power mode
+            if (currentLoad > currentGeneration && !lowPowerMode && currentCapacity / totalCapacity < 0.2) {
+                enterLowPowerMode();
+            }
+        }
+        
+        double getCurrentLoad() {
+            return currentLoad;
+        }
+        
+        double getCurrentCapacity() {
+            return currentCapacity;
+        }
+        
+        double getCapacityPercentage() {
+            return currentCapacity / totalCapacity * 100.0;
+        }
+        
+        void enterLowPowerMode() {
+            lowPowerMode = true;
+            Logger.getInstance().log(name + " entering low power mode", "WARNING");
+            EventSystem.getInstance().dispatchEvent("power.low_mode", true);
+        }
+        
+        void exitLowPowerMode() {
+            lowPowerMode = false;
+            Logger.getInstance().log(name + " exiting low power mode");
+            EventSystem.getInstance().dispatchEvent("power.low_mode", false);
+        }
+        
+        bool isInLowPowerMode() {
+            return lowPowerMode;
+        }
+        
+        bool canSupplyPower(double requestedPower) {
+            return currentGeneration >= requestedPower || currentCapacity > 0;
+        }
+        
+        void update(double dt) override {
+            SpacecraftSystem.update(dt);
+            
+            if (!isActive) {
+                currentGeneration = 0.0;
+                return;
+            }
+            
+            // Update power generation (could be affected by solar panel orientation, distance from Sun, etc.)
+            currentGeneration = generationRate;
+            
+            // Update battery capacity
+            double netPower = currentGeneration - currentLoad;
+            double energyDelta = netPower * dt / 3600.0; // Convert to watt-hours
+            
+            currentCapacity = min(totalCapacity, max(0.0, currentCapacity + energyDelta));
+            
+            // Check if we can exit low power mode
+            if (lowPowerMode && currentCapacity / totalCapacity > 0.5) {
+                exitLowPowerMode();
+            }
+            
+            // Check if we've run out of power
+            if (currentCapacity == 0 && currentGeneration < currentLoad) {
+                Logger.getInstance().log(name + " power depleted, shutting down systems", "ERROR");
+                EventSystem.getInstance().dispatchEvent("power.depleted", null);
+            }
+        }
+        
+        Object getStatus() override {
+            Object status = SpacecraftSystem.getStatus();
+            status.set("capacity", currentCapacity);
+            status.set("capacity_percent", getCapacityPercentage());
+            status.set("generation", currentGeneration);
+            status.set("load", currentLoad);
+            status.set("net_power", currentGeneration - currentLoad);
+            status.set("low_power_mode", lowPowerMode);
+            return status;
+        }
+    }
+
+/**
+ * Communication system
+ */
+class CommunicationSystem : SpacecraftSystem {
+    private:
+        double dataRate;          // bits per second
+        double signalStrength;    // dB
+        double signalQuality;     // 0.0 to 1.0
+        double antennaGain;       // dB
+        double frequency;         // MHz
+        double transmitPower;     // Watts
+        bool isTransmitting;
+        bool isReceiving;
+        Queue<Object> transmitQueue;
+        Queue<Object> receiveQueue;
+        
+    public:
+        CommunicationSystem(string name, double rate, double gain, double freq, double txPower, double power = 75.0)
+            : SpacecraftSystem(name, power) {
+            dataRate = rate;
+            antennaGain = gain;
+            frequency = freq;
+            transmitPower = txPower;
+            signalStrength = 0.0;
+            signalQuality = 0.0;
+            isTransmitting = false;
+            isReceiving = false;
+            transmitQueue = Queue<Object>();
+            receiveQueue = Queue<Object>();
+        }
+        
+        void startTransmitting() {
+            if (!isActive) {
+                Logger.getInstance().log("Cannot start transmitting: " + name + " system is not active", "WARNING");
+                return;
+            }
+            
+            isTransmitting = true;
+            Logger.getInstance().log(name + " started transmitting");
+        }
+        
+        void stopTransmitting() {
+            isTransmitting = false;
+            Logger.getInstance().log(name + " stopped transmitting");
+        }
+        
+        bool isSystemTransmitting() {
+            return isTransmitting;
+        }
+        
+        void startReceiving() {
+            if (!isActive) {
+                Logger.getInstance().log("Cannot start receiving: " + name + " system is not active", "WARNING");
+                return;
+            }
+            
+            isReceiving = true;
+            Logger.getInstance().log(name + " started receiving");
+        }
+        
+        void stopReceiving() {
+            isReceiving = false;
+            Logger.getInstance().log(name + " stopped receiving");
+        }
+        
+        bool isSystemReceiving() {
+            return isReceiving;
+        }
+        
+        void queueMessage(Object message) {
+            transmitQueue.enqueue(message);
+        }
+        
+        bool hasMessages() {
+            return !receiveQueue.isEmpty();
+        }
+        
+        Object receiveMessage() {
+            if (receiveQueue.isEmpty()) {
+                return null;
+            }
+            
+            return receiveQueue.dequeue();
+        }
+        
+        void setSignalStrength(double strength) {
+            signalStrength = strength;
+        }
+        
+        double getSignalStrength() {
+            return signalStrength;
+        }
+        
+        void setSignalQuality(double quality) {
+            signalQuality = max(0.0, min(1.0, quality));
+        }
+        
+        double getSignalQuality() {
+            return signalQuality;
+        }
+        
+        double calculateLinkBudget(double distance, double receiverGain, double atmosphericLoss = 0.0) {
+            // Free space path loss
+            double lambda = 299792458.0 / (frequency * 1e6); // wavelength in meters
+            double fspl = 20 * log10(4 * PI * distance / lambda);
+            
+            // Link budget
+            double eirp = transmitPower + antennaGain; // Effective Isotropic Radiated Power (dBW)
+            double receivedPower = eirp - fspl + receiverGain - atmosphericLoss;
+            
+            return receivedPower;
+        }
+        
+        void update(double dt) override {
+            SpacecraftSystem.update(dt);
+            
+            if (!isActive) {
+                signalStrength = 0.0;
+                signalQuality = 0.0;
+                isTransmitting = false;
+                isReceiving = false;
+                return;
+            }
+            
+            // Process transmit queue
+            if (isTransmitting && !transmitQueue.isEmpty()) {
+                // Calculate how many bits we can transmit in this time step
+                double bitsToTransmit = dataRate * dt;
+                double messageSize = 1000.0; // Assume 1000 bits per message for simplicity
+                
+                // Calculate how many messages we can transmit
+                int messagesToTransmit = (int)(bitsToTransmit / messageSize);
+                
+                for (int i = 0; i < messagesToTransmit && !transmitQueue.isEmpty(); i++) {
+                    Object message = transmitQueue.dequeue();
+                    
+                    // In a real implementation, this would actually transmit the message
+                    // For simulation, we'll just log it
+                    Logger.getInstance().log(name + " transmitted message: " + message.toString());
+                    
+                    // Simulate transmission delay and add to ground station receive queue
+                    // This would be handled by a separate ground station object in a real implementation
+                    EventSystem.getInstance().dispatchEvent("communication.message_sent", message);
+                }
+            }
+            
+            // Simulate receiving messages
+            if (isReceiving) {
+                // Calculate signal strength based on distance from Earth
+                // This is a simplified model
+                double earthDistance = 1.0; // Normalized distance
+                
+                // Adjust for lunar distance if we're near the Moon
+                if (MissionTime.getInstance().getCurrentTime() > MissionConfig.T_LUNAR_ORBIT_INSERTION &&
+                    MissionTime.getInstance().getCurrentTime() < MissionConfig.T_TRANS_EARTH_INJECTION) {
+                    earthDistance = Constants.MOON_DISTANCE / Constants.EARTH_RADIUS;
+                }
+                
+                // Calculate signal strength
+                signalStrength = 60.0 - 20 * log10(earthDistance);
+                
+                // Calculate signal quality (affected by orientation, obstacles, etc.)
+                signalQuality = max(0.0, min(1.0, signalStrength / 60.0));
+                
+                // Simulate message reception
+                if (Random.nextDouble() < 0.1 * dt) {
+                    Object message = Object();
+                    message.set("type", "command");
+                    message.set("timestamp", Time.now().toString());
+                    message.set("content", "Simulated ground command");
+                    
+                    receiveQueue.enqueue(message);
+                    Logger.getInstance().log(name + " received message");
+                    EventSystem.getInstance().dispatchEvent("communication.message_received", message);
+                }
+            }
+        }
+        
+        Object getStatus() override {
+            Object status = SpacecraftSystem.getStatus();
+            status.set("transmitting", isTransmitting);
+            status.set("receiving", isReceiving);
+            status.set("signal_strength", signalStrength);
+            status.set("signal_quality", signalQuality);
+            status.set("transmit_queue", transmitQueue.size());
+            status.set("receive_queue", receiveQueue.size());
+            status.set("data_rate", dataRate);
+            return status;
+        }
+    }
+
+/**
+ * Life support system
+ */
+class LifeSupportSystem : SpacecraftSystem {
+    private:
+        double oxygenLevel;       // Percentage
+        double co2Level;          // Parts per million
+        double temperature;       // Celsius
+        double pressure;          // kPa
+        double humidity;          // Percentage
+        double waterSupply;       // Liters
+        double foodSupply;        // Person-days
+        int crewCount;
+        bool emergencyMode;
+        
+    public:
+        LifeSupportSystem(string name, int crew, double water, double food, double power = 200.0)
+            : SpacecraftSystem(name, power) {
+            oxygenLevel = 100.0;
+            co2Level = 400.0;
+            temperature = 22.0;
+            pressure = 101.3;
+            humidity = 40.0;
+            waterSupply = water;
+            foodSupply = food;
+            crewCount = crew;
+            emergencyMode = false;
+        }
+        
+        void setCrewCount(int count) {
+            crewCount = max(0, count);
+        }
+        
+        int getCrewCount() {
+            return crewCount;
+        }
+        
+        double getOxygenLevel() {
+            return oxygenLevel;
+        }
+        
+        double getCO2Level() {
+            return co2Level;
+        }
+        
+        double getTemperature() {
+            return temperature;
+        }
+        
+        double getPressure() {
+            return pressure;
+        }
+        
+        double getHumidity() {
+            return humidity;
+        }
+        
+        double getWaterSupply() {
+            return waterSupply;
+        }
+        
+        double getFoodSupply() {
+            return foodSupply;
+        }
+        
+        void consumeWater(double amount) {
+            waterSupply = max(0.0, waterSupply - amount);
+            
+            if (waterSupply < 10.0) {
+                Logger.getInstance().log(name + " water supply low: " + waterSupply + " liters remaining", "WARNING");
+            }
+        }
+        
+        void consumeFood(double amount) {
+            foodSupply = max(0.0, foodSupply - amount);
+            
+            if (foodSupply < 5.0) {
+                Logger.getInstance().log(name + " food supply low: " + foodSupply + " person-days remaining", "WARNING");
+            }
+        }
+        
+        void enterEmergencyMode() {
+            emergencyMode = true;
+            Logger.getInstance().log(name + " entering emergency mode", "WARNING");
+            EventSystem.getInstance().dispatchEvent("life_support.emergency", true);
+        }
+        
+        void exitEmergencyMode() {
+            emergencyMode = false;
+            Logger.getInstance().log(name + " exiting emergency mode");
+            EventSystem.getInstance().dispatchEvent("life_support.emergency", false);
+        }
+        
+        bool isInEmergencyMode() {
+            return emergencyMode;
+        }
+        
+        void update(double dt) override {
+            SpacecraftSystem.update(dt);
+            
+            if (!isActive) {
+                // Life support is critical, so we should enter emergency mode if it's not active
+                if (!emergencyMode) {
+                    enterEmergencyMode();
+                }
+                return;
+            }
+            
+            // Update environmental parameters
+            if (emergencyMode) {
+                // In emergency mode, life support is minimal
+                oxygenLevel = max(0.0, oxygenLevel - 0.5 * crewCount * dt / 3600.0);
+                co2Level = min(10000.0, co2Level + 10.0 * crewCount * dt / 3600.0);
+                temperature = temperature + (18.0 - temperature) * 0.1 * dt / 3600.0;
+            } else {
+                // Normal operation
+                oxygenLevel = min(100.0, oxygenLevel + (100.0 - oxygenLevel) * 0.2 * dt / 3600.0);
+                co2Level = max(400.0, co2Level - (co2Level - 400.0) * 0.3 * dt / 3600.0);
+                temperature = temperature + (22.0 - temperature) * 0.2 * dt / 3600.0;
+            }
+            
+            // Consume resources
+            double waterConsumptionRate = 2.5; // Liters per person per day
+            double foodConsumptionRate = 1.0;  // Person-days per person per day
+            
+            consumeWater(waterConsumptionRate * crewCount * dt / 86400.0);
+            consumeFood(foodConsumptionRate * crewCount * dt / 86400.0);
+            
+            // Check for critical conditions
+            if (oxygenLevel < 19.5) {
+                addFault("Oxygen level critical: " + oxygenLevel + "%");
+                enterEmergencyMode();
+            }
+            
+            if (co2Level > 5000.0) {
+                addFault("CO2 level critical: " + co2Level + " ppm");
+                enterEmergencyMode();
+            }
+            
+            if (temperature < 15.0 || temperature > 30.0) {
+                addFault("Temperature out of safe range: " + temperature + "°C");
+                enterEmergencyMode();
+            }
+            
+            // Check if we can exit emergency mode
+            if (emergencyMode && 
+                oxygenLevel > 20.0 && 
+                co2Level < 4000.0 && 
+                temperature > 16.0 && 
+                temperature < 28.0) {
+                exitEmergencyMode();
+            }
+        }
+        
+        Object getStatus() override {
+            Object status = SpacecraftSystem.getStatus();
+            status.set("oxygen", oxygenLevel);
+            status.set("co2", co2Level);
+            status.set("temperature", temperature);
+            status.set("pressure", pressure);
+            status.set("humidity", humidity);
+            status.set("water", waterSupply);
+            status.set("food", foodSupply);
+            status.set("crew", crewCount);
+            status.set("emergency", emergencyMode);
+            return status;
+        }
+    }
+
+/**
+ * Thermal control system
+ */
+class ThermalControlSystem : SpacecraftSystem {
+    private:
+        double internalTemperature; // Celsius
+        double externalTemperature; // Celsius
+        Array<double> componentTemperatures;
+        double coolingCapacity;     // Watts
+        double heatingCapacity;     // Watts
+        bool coolingActive;
+        bool heatingActive;
+        
+    public:
+        ThermalControlSystem(string name, double cooling, double heating, double power = 150.0)
+            : SpacecraftSystem(name, power) {
+            internalTemperature = 22.0;
+            externalTemperature = -100.0;
+            componentTemperatures = Array<double>();
+            coolingCapacity = cooling;
+            heatingCapacity = heating;
+            coolingActive = false;
+            heatingActive = false;
+            
+            // Initialize component temperatures (example)
+            for (int i = 0; i < 10; i++) {
+                componentTemperatures.push(22.0);
+            }
+        }
+        
+        double getInternalTemperature() {
+            return internalTemperature;
+        }
+        
+        double getExternalTemperature() {
+            return externalTemperature;
+        }
+        
+        void setExternalTemperature(double temp) {
+            externalTemperature = temp;
+        }
+        
+        Array<double> getComponentTemperatures() {
+            return componentTemperatures;
+        }
+        
+        void activateCooling() {
+            if (!isActive) {
+                Logger.getInstance().log("Cannot activate cooling: " + name + " system is not active", "WARNING");
+                return;
+            }
+            
+            coolingActive = true;
+            Logger.getInstance().log(name + " cooling activated");
+        }
+        
+        void deactivateCooling() {
+            coolingActive = false;
+            Logger.getInstance().log(name + " cooling deactivated");
+        }
+        
+        bool isCoolingActive() {
+            return coolingActive;
+        }
+        
+        void activateHeating() {
+            if (!isActive) {
+                Logger.getInstance().log("Cannot activate heating: " + name + " system is not active", "WARNING");
+                return;
+            }
+            
+            heatingActive = true;
+            Logger.getInstance().log(name + " heating activated");
+        }
+        
+        void deactivateHeating() {
+            heatingActive = false;
+            Logger.getInstance().log(name + " heating deactivated");
+        }
+        
+        bool isHeatingActive() {
+            return heatingActive;
+        }
+        
+        void update(double dt) override {
+            SpacecraftSystem.update(dt);
+            
+            if (!isActive) {
+                coolingActive = false;
+                heatingActive = false;
+                return;
+            }
+            
+            // Update internal temperature based on external temperature and thermal control
+            double heatTransferRate = 0.05; // Heat transfer coefficient
+            double temperatureDifference = externalTemperature - internalTemperature;
+            
+            // Natural heat transfer
+            double naturalHeatFlow = temperatureDifference * heatTransferRate * dt / 3600.0;
+            
+            // Active thermal control
+            double activeHeatFlow = 0.0;
+            
+            if (coolingActive && internalTemperature > 20.0) {
+                activeHeatFlow = -coolingCapacity * dt / 3600.0 / 4200.0; // Assuming 4200 J/kg/K for water
+            }
+            
+            if (heatingActive && internalTemperature < 24.0) {
+                activeHeatFlow = heatingCapacity * dt / 3600.0 / 4200.0;
+            }
+            
+            // Update internal temperature
+            internalTemperature += naturalHeatFlow + activeHeatFlow;
+            
+            // Update component temperatures
+            for (int i = 0; i < componentTemperatures.size(); i++) {
+                double componentTemp = componentTemperatures[i];
+                
+                // Component generates heat based on its operation
+                double heatGeneration = Random.nextDouble() * 2.0 * dt / 3600.0;
+                
+                // Heat transfer with internal environment
+                double componentHeatTransfer = (internalTemperature - componentTemp) * 0.1 * dt / 3600.0;
+                
+                componentTemperatures[i] = componentTemp + heatGeneration + componentHeatTransfer;
+                
+                // Check for overheating
+                if (componentTemperatures[i] > 80.0) {
+                    addFault("Component " + i + " overheating: " + componentTemperatures[i] + "°C");
+                    activateCooling();
+                }
+            }
+            
+            // Automatic thermal control
+            if (internalTemperature > 25.0 && !coolingActive) {
+                activateCooling();
+            } else if (internalTemperature < 20.0 && !heatingActive) {
+                activateHeating();
+            } else if (internalTemperature < 23.0 && coolingActive) {
+                deactivateCooling();
+            } else if (internalTemperature > 22.0 && heatingActive) {
+                deactivateHeating();
+            }
+        }
+        
+        Object getStatus() override {
+            Object status = SpacecraftSystem.getStatus();
+            status.set("internal_temp", internalTemperature);
+            status.set("external_temp", externalTemperature);
+            status.set("cooling", coolingActive);
+            status.set("heating", heatingActive);
+            
+            // Add component temperatures
+            Array<Object> components = Array<Object>();
+            for (int i = 0; i < componentTemperatures.size(); i++) {
+                Object comp = Object();
+                comp.set("id", i);
+                comp.set("temperature", componentTemperatures[i]);
+                components.push(comp);
+            }
+            status.set("components", components);
+            
+            return status;
+        }
+    }
+
+// =====================================================================
+// SPACECRAFT CLASSES
+// =====================================================================
+
+/**
+ * Base spacecraft class
+ */
+class Spacecraft {
+    protected:
+        string name;
+        double mass;              // kg
+        StateVector state;
+        Quaternion attitude;
+        Vector3 angularVelocity;
+        Object systems;
+        Array<SpacecraftSystem> systemsList;
+        
+    public:
+        Spacecraft(string spacecraftName, double initialMass) {
+            name = spacecraftName;
+            mass = initialMass;
+            state = StateVector();
+            attitude = Quaternion(1, 0, 0, 0);
+            angularVelocity = Vector3(0, 0, 0);
+            systems = Object();
+            systemsList = Array<SpacecraftSystem>();
+        }
+        
+        string getName() {
+            return name;
+        }
+        
+        double getMass() {
+            return mass;
+        }
+        
+        void setMass(double newMass) {
+            mass = max(0.0, newMass);
+        }
+        
+        StateVector getState() {
+            return state;
+        }
+        
+        void setState(StateVector newState) {
+            state = newState;
+            
+            // Update GNC system if it exists
+            if (hasSystem("gnc")) {
+                GNCSystem gnc = getSystem("gnc").as<GNCSystem>();
+                gnc.setCurrentState(state);
+            }
+        }
+        
+        Quaternion getAttitude() {
+            return attitude;
+        }
+        
+        void setAttitude(Quaternion newAttitude) {
+            attitude = newAttitude.normalize();
+            
+            // Update GNC system if it exists
+            if (hasSystem("gnc")) {
+                GNCSystem gnc = getSystem("gnc").as<GNCSystem>();
+                gnc.setAttitude(attitude);
+            }
+        }
+        
+        Vector3 getAngularVelocity() {
+            return angularVelocity;
+        }
+        
+        void setAngularVelocity(Vector3 omega) {
+            angularVelocity = omega;
+            
+            // Update GNC system if it exists
+            if (hasSystem("gnc")) {
+                GNCSystem gnc = getSystem("gnc").as<GNCSystem>();
+                gnc.setAngularVelocity(omega);
+            }
+        }
+        
+        void addSystem(string systemId, SpacecraftSystem system) {
+            systems.set(systemId, system);
+            systemsList.push(system);
+        }
+        
+        bool hasSystem(string systemId) {
+            return systems.has(systemId);
+        }
+        
+        SpacecraftSystem getSystem(string systemId) {
+            if (!hasSystem(systemId)) {
+                Logger.getInstance().log("System not found: " + systemId, "ERROR");
+                return null;
+            }
+            
+            return systems.get(systemId).as<SpacecraftSystem>();
+        }
+        
+        Array<SpacecraftSystem> getAllSystems() {
+            return systemsList;
+        }
+        
+        void activateSystem(string systemId) {
+            if (hasSystem(systemId)) {
+                SpacecraftSystem system = getSystem(systemId);
+                system.activate();
+            }
+        }
+        
+        void deactivateSystem(string systemId) {
+            if (hasSystem(systemId)) {
+                SpacecraftSystem system = getSystem(systemId);
+                system.deactivate();
+            }
+        }
+        
+        void activateAllSystems() {
+            for (int i = 0; i < systemsList.size(); i++) {
+                systemsList[i].activate();
+            }
+        }
+        
+        void deactivateAllSystems() {
+            for (int i = 0; i < systemsList.size(); i++) {
+                systemsList[i].deactivate();
+            }
+        }
+        
+        double getTotalPowerConsumption() {
+            double totalPower = 0.0;
+            
+            for (int i = 0; i < systemsList.size(); i++) {
+                if (systemsList[i].isSystemActive()) {
+                    totalPower += systemsList[i].getPowerConsumption();
+                }
+            }
+            
+            return totalPower;
+        }
+        
+        virtual void update(double dt) {
+            // Update all systems
+            for (int i = 0; i < systemsList.size(); i++) {
+                systemsList[i].update(dt);
+            }
+            
+            // Update power system with current load
+            if (hasSystem("power")) {
+                PowerSystem power = getSystem("power").as<PowerSystem>();
+                power.setCurrentLoad(getTotalPowerConsumption());
+            }
+            
+            // Update spacecraft state based on propulsion
+            if (hasSystem("propulsion")) {
+                PropulsionSystem propulsion = getSystem("propulsion").as<PropulsionSystem>();
+                
+                if (propulsion.isEngineThrusting()) {
+                    // Calculate acceleration from thrust
+                    Vector3 thrustAcceleration = propulsion.calculateThrustAcceleration(mass);
+                    
+                    // Update velocity
+                    state.velocity = state.velocity + thrustAcceleration * dt;
+                }
+            }
+            
+            // Update position based on velocity
+            state.position = state.position + state.velocity * dt;
+            
+            // Update attitude based on angular velocity
+            if (angularVelocity.length() > 0) {
+                double angle = angularVelocity.length() * dt;
+                Vector3 axis = angularVelocity.normalize();
+                
+                Quaternion deltaQ = Quaternion.fromAxisAngle(axis, angle);
+                attitude = (deltaQ * attitude).normalize();
+            }
+            
+            // Update GNC system with current state
+            if (hasSystem("gnc")) {
+                GNCSystem gnc = getSystem("gnc").as<GNCSystem>();
+                gnc.setCurrentState(state);
+                gnc.setAttitude(attitude);
+                gnc.setAngularVelocity(angularVelocity);
+            }
+        }
+        
+        Object getStatus() {
+            Object status = Object();
+            status.set("name", name);
+            status.set("mass", mass);
+            status.set("position", state.position);
+            status.set("velocity", state.velocity);
+            status.set("speed", state.velocity.length());
+            status.set("attitude", attitude);
+            
+            // Add systems status
+            Object systemsStatus = Object();
+            for (int i = 0; i < systemsList.size(); i++) {
+                SpacecraftSystem system = systemsList[i];
+                systemsStatus.set(system.getName(), system.getStatus());
+            }
+            status.set("systems", systemsStatus);
+            
+            return status;
+        }
+    }
+
+/**
+ * Command and Service Module (CSM)
+ */
+class CommandModule : Spacecraft {
+    private:
+        bool docked;
+        Spacecraft dockedVehicle;
+        bool heatShieldIntact;
+        double reentryTemperature;
+        bool parachutesDeployed;
+        
+    public:
+        CommandModule(string name = "Columbia")
+            : Spacecraft(name, SaturnVConfig.CSM_MASS_DRY + SaturnVConfig.CSM_MASS_PROPELLANT) {
+            docked = false;
+            dockedVehicle = null;
+            heatShieldIntact = true;
+            reentryTemperature = 20.0;
+            parachutesDeployed = false;
+            
+            // Initialize systems
+            initializeSystems();
+        }
+        
+        void initializeSystems() {
+            // Propulsion system (Service Propulsion System)
+            PropulsionSystem sps = new PropulsionSystem(
+                "Service Propulsion System",
+                SaturnVConfig.CSM_THRUST_MAIN,
+                SaturnVConfig.CSM_ISP_MAIN,
+                SaturnVConfig.CSM_MASS_PROPELLANT,
+                100.0
+            );
+            addSystem("propulsion", sps);
+            
+            // RCS propulsion
+            PropulsionSystem rcs = new PropulsionSystem(
+                "Reaction Control System",
+                SaturnVConfig.CSM_THRUST_RCS * 16, // 16 RCS thrusters
+                SaturnVConfig.CSM_ISP_RCS,
+                500.0, // kg of RCS propellant
+                50.0
+            );
+            addSystem("rcs", rcs);
+            
+            // GNC system
+            GNCSystem gnc = new GNCSystem("Guidance and Navigation", 75.0);
+            addSystem("gnc", gnc);
+            
+            // Power system
+            PowerSystem power = new PowerSystem(
+                "Electrical Power System",
+                4000.0, // Watt-hours
+                1500.0, // Watts generation
+                10.0
+            );
+            addSystem("power", power);
+            
+            // Communication system
+            CommunicationSystem comm = new CommunicationSystem(
+                "Communications",
+                51200.0, // 51.2 kbps
+                12.0,    // dB gain
+                2287.5,  // MHz (S-band)
+                20.0,    // Watts transmit power
+                75.0
+            );
+            addSystem("communication", comm);
+            
+            // Life support
+            LifeSupportSystem lifeSup = new LifeSupportSystem(
+                "Environmental Control and Life Support",
+                3,      // 3 crew members
+                200.0,  // 200 liters of water
+                30.0,   // 30 person-days of food
+                200.0
+            );
+            addSystem("life_support", lifeSup);
+            
+            // Thermal control
+            ThermalControlSystem thermal = new ThermalControlSystem(
+                "Thermal Control",
+                2000.0, // Cooling capacity (W)
+                1000.0, // Heating capacity (W)
+                150.0
+            );
+            addSystem("thermal", thermal);
+        }
+        
+        void dockWith(Spacecraft vehicle) {
+            docked = true;
+            dockedVehicle = vehicle;
+            Logger.getInstance().log(name + " docked with " + vehicle.getName());
+            
+            // Update mass to include docked vehicle
+            mass += vehicle.getMass();
+        }
+        
+        void undock() {
+            if (docked) {
+                Logger.getInstance().log(name + " undocked from " + dockedVehicle.getName());
+                
+                // Update mass to exclude undocked vehicle
+                mass -= dockedVehicle.getMass();
+                
+                docked = false;
+                dockedVehicle = null;
+            }
+        }
+        
+        bool isDocked() {
+            return docked;
+        }
+        
+        Spacecraft getDockedVehicle() {
+            return dockedVehicle;
+        }
+        
+        bool isHeatShieldIntact() {
+            return heatShieldIntact;
+        }
+        
+        void damageHeatShield() {
+            heatShieldIntact = false;
+            Logger.getInstance().log(name + " heat shield damaged", "ERROR");
+        }
+        
+        double getReentryTemperature() {
+            return reentryTemperature;
+        }
+        
+        void deployParachutes() {
+            parachutesDeployed = true;
+            Logger.getInstance().log(name + " parachutes deployed");
+        }
+        
+        bool areParachutesDeployed() {
+            return parachutesDeployed;
+        }
+        
+        void performReentry(double entryAngle) {
+            Logger.getInstance().log(name + " beginning reentry at angle: " + entryAngle + " degrees");
+            
+            // Simulate reentry heating
+            double maxTemp = 0.0;
+            
+            for (double altitude = 120.0; altitude > 10.0; altitude -= 5.0) {
+                // Calculate temperature based on entry angle and altitude
+                // This is a simplified model
+                double temp = 1000.0 + (25.0 - abs(entryAngle - 6.5)) * 200.0 * (1.0 - altitude/120.0);
+                reentryTemperature = temp;
+                
+                maxTemp = max(maxTemp, temp);
+                
+                Logger.getInstance().log("Altitude: " + altitude + " km, Heat shield temperature: " + temp + " °C");
+                
+                // Check for heat shield failure
+                if (temp > 2000.0 && heatShieldIntact) {
+                    double failureProbability = (temp - 2000.0) / 1000.0;
+                    
+                    if (Random.nextDouble() < failureProbability) {
+                        damageHeatShield();
+                    }
+                }
+                
+                // If heat shield is damaged, there's a high risk of catastrophic failure
+                if (!heatShieldIntact && temp > 1500.0) {
+                    Logger.getInstance().log(name + " experiencing critical heat shield failure", "ERROR");
+                    EventSystem.getInstance().dispatchEvent("reentry.critical_failure", null);
+                    return;
+                }
+            }
+            
+            Logger.getInstance().log(name + " reentry complete, maximum temperature: " + maxTemp + " °C");
+            
+            // Deploy parachutes
+            deployParachutes();
+        }
+        
+        void update(double dt) override {
+            Spacecraft.update(dt);
+            
+            // Update reentry temperature (cooling down if not in reentry)
+            if (reentryTemperature > 20.0) {
+                reentryTemperature = max(20.0, reentryTemperature - 10.0 * dt / 60.0);
+            }
+        }
+        
+        Object getStatus() override {
+            Object status = Spacecraft.getStatus();
+            status.set("docked", docked);
+            if (docked) {
+                status.set("docked_with", dockedVehicle.getName());
+            }
+            status.set("heat_shield_intact", heatShieldIntact);
+            status.set("reentry_temperature", reentryTemperature);
+            status.set("parachutes_deployed", parachutesDeployed);
+            return status;
+        }
+    }
+
+/**
+ * Lunar Module (LM)
+ */
+class LunarModule : Spacecraft {
+    private:
+        bool descentStageAttached;
+        bool landingGearDeployed;
+        double altitude;
+        bool onSurface;
+        Vector3 landingSite;
+        
+    public:
+        LunarModule(string name = "Eagle")
+            : Spacecraft(name, SaturnVConfig.LM_MASS_DRY_DESCENT + SaturnVConfig.LM_MASS_DRY_ASCENT + 
+                       SaturnVConfig.LM_MASS_PROPELLANT_DESCENT + SaturnVConfig.LM_MASS_PROPELLANT_ASCENT) {
+            descentStageAttached = true;
+            landingGearDeployed = false;
+            altitude = 0.0;
+            onSurface = false;
+            landingSite = Vector3(0, 0, 0);
+            
+            // Initialize systems
+            initializeSystems();
+        }
+        
+        void initializeSystems() {
+            // Descent propulsion system
+            PropulsionSystem descentEngine = new PropulsionSystem(
+                "Descent Propulsion System",
+                SaturnVConfig.LM_THRUST_DESCENT,
+                SaturnVConfig.LM_ISP_DESCENT,
+                SaturnVConfig.LM_MASS_PROPELLANT_DESCENT,
+                100.0
+            );
+            addSystem("descent_propulsion", descentEngine);
+            
+            // Ascent propulsion system
+            PropulsionSystem ascentEngine = new PropulsionSystem(
+                "Ascent Propulsion System",
+                SaturnVConfig.LM_THRUST_ASCENT,
+                SaturnVConfig.LM_ISP_ASCENT,
+                SaturnVConfig.LM_MASS_PROPELLANT_ASCENT,
+                100.0
+            );
+            addSystem("ascent_propulsion", ascentEngine);
+            
+            // RCS propulsion
+            PropulsionSystem rcs = new PropulsionSystem(
+                "Reaction Control System",
+                SaturnVConfig.LM_THRUST_RCS * 16, // 16 RCS thrusters
+                SaturnVConfig.LM_ISP_RCS,
+                300.0, // kg of RCS propellant
+                50.0
+            );
+            addSystem("rcs", rcs);
+            
+            // GNC system
+            GNCSystem gnc = new GNCSystem("Guidance and Navigation", 75.0);
+            addSystem("gnc", gnc);
+            
+            // Power system
+            PowerSystem power = new PowerSystem(
+                "Electrical Power System",
+                2000.0, // Watt-hours
+                1000.0, // Watts generation
+                10.0
+            );
+            addSystem("power", power);
+            
+            // Communication system
+            CommunicationSystem comm = new CommunicationSystem(
+                "Communications",
+                51200.0, // 51.2 kbps
+                12.0,    // dB gain
+                2287.5,  // MHz (S-band)
+                20.0,    // Watts transmit power
+                75.0
+            );
+            addSystem("communication", comm);
+            
+            // Life support
+            LifeSupportSystem lifeSup = new LifeSupportSystem(
+                "Environmental Control and Life Support",
+                2,      // 2 crew members
+                100.0,  // 100 liters of water
+                10.0,   // 10 person-days of food
+                150.0
+            );
+            addSystem("life_support", lifeSup);
+            
+            // Thermal control
+            ThermalControlSystem thermal = new ThermalControlSystem(
+                "Thermal Control",
+                1500.0, // Cooling capacity (W)
+                800.0,  // Heating capacity (W)
+                120.0
+            );
+            addSystem("thermal", thermal);
+        }
+        
+        void deployLandingGear() {
+            landingGearDeployed = true;
+            Logger.getInstance().log(name + " landing gear deployed");
+        }
+        
+        bool isLandingGearDeployed() {
+            return landingGearDeployed;
+        }
+        
+        void jettisionDescentStage() {
+            if (descentStageAttached) {
+                descentStageAttached = false;
+                
+                // Update mass
+                mass = SaturnVConfig.LM_MASS_DRY_ASCENT + SaturnVConfig.LM_MASS_PROPELLANT_ASCENT;
+                
+                // Deactivate descent systems
+                deactivateSystem("descent_propulsion");
+                
+                Logger.getInstance().log(name + " descent stage jettisoned");
+            }
+        }
+        
+        bool isDescentStageAttached() {
+            return descentStageAttached;
+        }
+        
+        void setAltitude(double alt) {
+            altitude = alt;
+        }
+        
+        double getAltitude() {
+            return altitude;
+        }
+        
+        void land(Vector3 site) {
+            onSurface = true;
+            landingSite = site;
+            altitude = 0.0;
+            state.velocity = Vector3(0, 0, 0);
+            Logger.getInstance().log(name + " landed at " + site.toString());
+        }
+        
+        bool isOnSurface() {
+            return onSurface;
+        }
+        
+        Vector3 getLandingSite() {
+            return landingSite;
+        }
+        
+        void performPoweredDescent(Vector3 targetSite) {
+            Logger.getInstance().log(name + " beginning powered descent to landing site");
+            
+            // Ensure landing gear is deployed
+            if (!landingGearDeployed) {
+                deployLandingGear();
+            }
+            
+            // Ensure descent engine is active
+            if (hasSystem("descent_propulsion")) {
+                PropulsionSystem descentEngine = getSystem("descent_propulsion").as<PropulsionSystem>();
+                
+                if (!descentEngine.isSystemActive()) {
+                    descentEngine.activate();
+                }
+                
+                // Start descent burn
+                descentEngine.startThrust(0.1, Vector3(0, 0, -1));
+            }
+            
+            // Guidance parameters
+            double hoverAltitude = ConfigurationManager.getInstance().get<double>("guidance.landing.hover_altitude", 30.0);
+            double maxHorizontalVelocity = ConfigurationManager.getInstance().get<double>("guidance.landing.max_horizontal_velocity", 1.0);
+            double maxVerticalVelocity = ConfigurationManager.getInstance().get<double>("guidance.landing.max_vertical_velocity", 2.0);
+            
+            Logger.getInstance().log(name + " descent parameters: hover altitude=" + hoverAltitude + 
+                                   "m, max horizontal velocity=" + maxHorizontalVelocity + 
+                                   "m/s, max vertical velocity=" + maxVerticalVelocity + "m/s");
+            
+            // The actual descent would be simulated in the update method
+            // This method just initiates the descent
+        }
+        
+        void performAscentStage() {
+            Logger.getInstance().log(name + " initiating ascent stage");
+            
+            // Jettison descent stage if still attached
+            if (descentStageAttached) {
+                jettisionDescentStage();
+            }
+            
+            // Ensure ascent engine is active
+            if (hasSystem("ascent_propulsion")) {
+                PropulsionSystem ascentEngine = getSystem("ascent_propulsion").as<PropulsionSystem>();
+                
+                if (!ascentEngine.isSystemActive()) {
+                    ascentEngine.activate();
+                }
+                
+                // Start ascent burn
+                ascentEngine.startThrust(1.0, Vector3(0, 0, 1));
+            }
+            
+            // No longer on surface
+            onSurface = false;
+            
+            // The actual ascent would be simulated in the update method
+            // This method just initiates the ascent
+        }
+        
+        void update(double dt) override {
+            Spacecraft.update(dt);
+            
+            // Update altitude if we're near the Moon
+            if (state.position.length() > Constants.EARTH_RADIUS * 50) {
+                // Calculate altitude above lunar surface
+                double distanceToMoonCenter = (state.position - Vector3(Constants.MOON_DISTANCE, 0, 0)).length();
+                altitude = distanceToMoonCenter - Constants.MOON_RADIUS;
+            }
+            
+            // Simulate powered descent if descent engine is thrusting
+            if (hasSystem("descent_propulsion")) {
+                PropulsionSystem descentEngine = getSystem("descent_propulsion").as<PropulsionSystem>();
+                
+                if (descentEngine.isEngineThrusting() && !onSurface) {
+                    // Update altitude
+                    double verticalVelocity = state.velocity.z;
+                    altitude += verticalVelocity * dt;
+                    
+                    // Check for touchdown
+                    if (altitude <= 0.1) {
+                        // Land at current position
+                        Vector3 currentPosition = CoordinateTransform.eciToGeodetic(state.position, MissionTime.getInstance().getJulianDate());
+                        land(currentPosition);
+                        
+                        // Stop descent engine
+                        descentEngine.stopThrust();
+                    }
+                }
+            }
+        }
+        
+        Object getStatus() override {
+            Object status = Spacecraft.getStatus();
+            status.set("descent_stage_attached", descentStageAttached);
+            status.set("landing_gear_deployed", landingGearDeployed);
+            status.set("altitude", altitude);
+            status.set("on_surface", onSurface);
+            if (onSurface) {
+                status.set("landing_site", landingSite);
+            }
+            return status;
+        }
+    }
+
+/**
+ * Saturn V rocket
+ */
+class SaturnV : Spacecraft {
+    private:
+        bool s1cAttached;
+        bool s2Attached;
+        bool s4bAttached;
+        CommandModule cm;
+        LunarModule lm;
+        bool lmExtracted;
+        
+    public:
+        SaturnV(string name = "Saturn V AS-506")
+            : Spacecraft(name, SaturnVConfig.S1C_MASS_DRY + SaturnVConfig.S1C_MASS_PROPELLANT + 
+                       SaturnVConfig.S2_MASS_DRY + SaturnVConfig.S2_MASS_PROPELLANT + 
+                       SaturnVConfig.S4B_MASS_DRY + SaturnVConfig.S4B_MASS_PROPELLANT + 
+                       SaturnVConfig.CSM_MASS_DRY + SaturnVConfig.CSM_MASS_PROPELLANT + 
+                       SaturnVConfig.LM_MASS_DRY_DESCENT + SaturnVConfig.LM_MASS_DRY_ASCENT + 
+                       SaturnVConfig.LM_MASS_PROPELLANT_DESCENT + SaturnVConfig.LM_MASS_PROPELLANT_ASCENT) {
+            s1cAttached = true;
+            s2Attached = true;
+            s4bAttached = true;
+            lmExtracted = false;
+            
+            // Create Command Module and Lunar Module
+            cm = new CommandModule();
+            lm = new LunarModule();
+            
+            // Initialize systems
+            initializeSystems();
+        }
+        
+        void initializeSystems() {
+            // S-IC stage propulsion
+            PropulsionSystem s1cEngine = new PropulsionSystem(
+                "S-IC Stage Engines",
+                SaturnVConfig.S1C_THRUST_SL,
+                SaturnVConfig.S1C_ISP_SL,
+                SaturnVConfig.S1C_MASS_PROPELLANT,
+                200.0
+            );
+            addSystem("s1c_propulsion", s1cEngine);
+            
+            // S-II stage propulsion
+            PropulsionSystem s2Engine = new PropulsionSystem(
+                "S-II Stage Engines",
+                SaturnVConfig.S2_THRUST_VAC,
+                SaturnVConfig.S2_ISP_VAC,
+                SaturnVConfig.S2_MASS_PROPELLANT,
+                200.0
+            );
+            addSystem("s2_propulsion", s2Engine);
+            
+            // S-IVB stage propulsion
+            PropulsionSystem s4bEngine = new PropulsionSystem(
+                "S-IVB Stage Engine",
+                SaturnVConfig.S4B_THRUST_VAC,
+                SaturnVConfig.S4B_ISP_VAC,
+                SaturnVConfig.S4B_MASS_PROPELLANT,
+                150.0
+            );
+            addSystem("s4b_propulsion", s4bEngine);
+            
+            // GNC system
+            GNCSystem gnc = new GNCSystem("Guidance and Navigation", 100.0);
+            addSystem("gnc", gnc);
+            
+            // Power system
+            PowerSystem power = new PowerSystem(
+                "Electrical Power System",
+                5000.0, // Watt-hours
+                2000.0, // Watts generation
+                20.0
+            );
+            addSystem("power", power);
+        }
+        
+        void launchSequence() {
+            Logger.getInstance().log(name + " initiating launch sequence");
+            
+            // Ensure S-IC engines are active
+            if (hasSystem("s1c_propulsion")) {
+                PropulsionSystem s1cEngine = getSystem("s1c_propulsion").as<PropulsionSystem>();
+                
+                if (!s1cEngine.isSystemActive()) {
+                    s1cEngine.activate();
+                }
+                
+                // Start S-IC engines
+                s1cEngine.startThrust(1.0, Vector3(0, 0, 1));
+                Logger.getInstance().log(name + " S-IC engines ignition");
+            }
+            
+            Logger.getInstance().log(name + " liftoff");
+        }
+        
+        void separateS1C() {
+            if (s1cAttached) {
+                s1cAttached = false;
+                
+                // Update mass
+                mass -= SaturnVConfig.S1C_MASS_DRY;
+                
+                // Deactivate S-IC systems
+                deactivateSystem("s1c_propulsion");
+                
+                Logger.getInstance().log(name + " S-IC stage separation");
+                
+                // Ignite S-II engines
+                if (hasSystem("s2_propulsion")) {
+                    PropulsionSystem s2Engine = getSystem("s2_propulsion").as<PropulsionSystem>();
+                    
+                    if (!s2Engine.isSystemActive()) {
+                        s2Engine.activate();
+                    }
+                    
+                    // Start S-II engines
+                    s2Engine.startThrust(1.0, Vector3(0, 0, 1));
+                    Logger.getInstance().log(name + " S-II engines ignition");
+                }
+            }
+        }
+        
+        void separateS2() {
+            if (s2Attached) {
+                s2Attached = false;
+                
+                // Update mass
+                mass -= SaturnVConfig.S2_MASS_DRY;
+                
+                // Deactivate S-II systems
+                deactivateSystem("s2_propulsion");
+                
+                Logger.getInstance().log(name + " S-II stage separation");
+                
+                // Ignite S-IVB engine
+                if (hasSystem("s4b_propulsion")) {
+                    PropulsionSystem s4bEngine = getSystem("s4b_propulsion").as<PropulsionSystem>();
+                    
+                    if (!s4bEngine.isSystemActive()) {
+                        s4bEngine.activate();
+                    }
+                    
+                    // Start S-IVB engine
+                    s4bEngine.startThrust(1.0, Vector3(0, 0, 1));
+                    Logger.getInstance().log(name + " S-IVB engine ignition");
+                }
+            }
+        }
+        
+        void shutdownS4B() {
+            if (hasSystem("s4b_propulsion")) {
+                PropulsionSystem s4bEngine = getSystem("s4b_propulsion").as<PropulsionSystem>();
+                
+                if (s4bEngine.isEngineThrusting()) {
+                    s4bEngine.stopThrust();
+                    Logger.getInstance().log(name + " S-IVB engine shutdown");
+                }
+            }
+        }
+        
+        void restartS4B() {
+            if (hasSystem("s4b_propulsion") && s4bAttached) {
+                PropulsionSystem s4bEngine = getSystem("s4b_propulsion").as<PropulsionSystem>();
+                
+                if (!s4bEngine.isEngineThrusting()) {
+                    s4bEngine.startThrust(1.0, Vector3(0, 0, 1));
+                    Logger.getInstance().log(name + " S-IVB engine restart");
+                }
+            }
+        }
+        
+        void separateCSM() {
+            if (s4bAttached) {
+                Logger.getInstance().log(name + " CSM separating from S-IVB stage");
+                
+                // Update spacecraft state to match current state
+                cm.setState(state);
+                cm.setAttitude(attitude);
+                
+                // Activate CSM systems
+                cm.activateAllSystems();
+                
+                // CSM is now the active spacecraft
+                // In a real simulation, we would switch to controlling the CSM
+            }
+        }
+        
+        void extractLM() {
+            if (s4bAttached && !lmExtracted) {
+                lmExtracted = true;
+                
+                Logger.getInstance().log(name + " extracting LM from S-IVB stage");
+                
+                // Update LM state to match current state
+                lm.setState(state);
+                lm.setAttitude(attitude);
+                
+                // Dock CSM with LM
+                cm.dockWith(lm);
+                
+                // Activate LM systems
+                lm.activateAllSystems();
+            }
+        }
+        
+        void separateFromS4B() {
+            if (s4bAttached) {
+                s4bAttached = false;
+                
+                // Update mass
+                mass = cm.getMass(); // Only CSM and LM remain
+                
+                // Deactivate S-IVB systems
+                deactivateSystem("s4b_propulsion");
+                
+                Logger.getInstance().log(name + " CSM/LM separated from S-IVB stage");
+            }
+        }
+        
+        CommandModule getCommandModule() {
+            return cm;
+        }
+        
+        LunarModule getLunarModule() {
+            return lm;
+        }
+        
+        bool isS1CAttached() {
+            return s1cAttached;
+        }
+        
+        bool isS2Attached() {
+            return s2Attached;
+        }
+        
+        bool isS4BAttached() {
+            return s4bAttached;
+        }
+        
+        bool isLMExtracted() {
+            return lmExtracted;
+        }
+        
+        void update(double dt) override {
+            Spacecraft.update(dt);
+            
+            // Update Command Module and Lunar Module
+            cm.update(dt);
+            lm.update(dt);
+            
+            // Check for stage separation based on propellant depletion
+            if (s1cAttached && hasSystem("s1c_propulsion")) {
+                PropulsionSystem s1cEngine = getSystem("s1c_propulsion").as<PropulsionSystem>();
+                
+                if (s1cEngine.getPropellantPercentage() < 1.0) {
+                    separateS1C();
+                }
+            }
+            
+            if (s2Attached && hasSystem("s2_propulsion")) {
+                PropulsionSystem s2Engine = getSystem("s2_propulsion").as<PropulsionSystem>();
+                
+                if (s2Engine.getPropellantPercentage() < 1.0) {
+                    separateS2();
+                }
+            }
+        }
+        
+        Object getStatus() override {
+            Object status = Spacecraft.getStatus();
+            status.set("s1c_attached", s1cAttached);
+            status.set("s2_attached", s2Attached);
+            status.set("s4b_attached", s4bAttached);
+            status.set("lm_extracted", lmExtracted);
+            status.set("cm", cm.getStatus());
+            status.set("lm", lm.getStatus());
+            return status;
+        }
+    }
+
+// =====================================================================
+// MISSION CONTROL
+// =====================================================================
+
+/**
+ * Mission stage enumeration
+ */
+enum MissionStage {
+    PRELAUNCH,
+    LAUNCH,
+    EARTH_ORBIT,
+    TRANS_LUNAR_INJECTION,
+    LUNAR_COAST,
+    LUNAR_ORBIT_INSERTION,
+    LUNAR_ORBIT,
+    LUNAR_DESCENT,
+    LUNAR_SURFACE,
+    LUNAR_ASCENT,
+    LUNAR_RENDEZVOUS,
+    TRANS_EARTH_INJECTION,
+    EARTH_COAST,
+    REENTRY,
+    RECOVERY
+}
+
+/**
+ * Mission Control class
+ */
+class MissionControl {
+    private:
+        MissionStage currentStage;
+        SaturnV vehicle;
+        CommandModule cm;
+        LunarModule lm;
+        OrbitalPropagator propagator;
+        ManeuverPlanner maneuverPlanner;
+        Object telemetry;
+        Object commands;
+        bool missionAborted;
+        string abortReason;
+        
+    public:
+        MissionControl() {
+            currentStage = MissionStage.PRELAUNCH;
+            vehicle = new SaturnV();
+            cm = vehicle.getCommandModule();
+            lm = vehicle.getLunarModule();
+            propagator = OrbitalPropagator();
+            maneuverPlanner = ManeuverPlanner();
+            telemetry = Object();
+            commands = Object();
+            missionAborted = false;
+            abortReason = "";
+            
+            // Initialize telemetry
+            initializeTelemetry();
+            
+            // Initialize commands
+            initializeCommands();
+            
+            // Register event handlers
+            registerEventHandlers();
+        }
+        
+        void initializeTelemetry() {
+            // Vehicle telemetry
+            telemetry.set("vehicle", Object());
+            telemetry.get("vehicle").set("position", Vector3(0, 0, 0));
+            telemetry.get("vehicle").set("velocity", Vector3(0, 0, 0));
+            telemetry.get("vehicle").set("altitude", 0.0);
+            telemetry.get("vehicle").set("speed", 0.0);
+            
+            // Mission telemetry
+            telemetry.set("mission", Object());
+            telemetry.get("mission").set("stage", MissionStage.PRELAUNCH);
+            telemetry.get("mission").set("time", 0.0);
+            telemetry.get("mission").set("aborted", false);
+            
+            // Systems telemetry
+            telemetry.set("systems", Object());
+            telemetry.get("systems").set("propulsion", Object());
+            telemetry.get("systems").set("gnc", Object());
+            telemetry.get("systems").set("power", Object());
+            telemetry.get("systems").set("communication", Object());
+            telemetry.get("systems").set("life_support", Object());
+            telemetry.get("systems").set("thermal", Object());
+        }
+        
+        void initializeCommands() {
+            // Mission commands
+            commands.set("mission", Object());
+            commands.get("mission").set("abort", false);
+            commands.get("mission").set("proceed", false);
+            
+            // Vehicle commands
+            commands.set("vehicle", Object());
+            commands.get("vehicle").set("launch", false);
+            commands.get("vehicle").set("separate_stage", false);
+            commands.get("vehicle").set("engine_cutoff", false);
+            
+            // Maneuver commands
+            commands.set("maneuver", Object());
+            commands.get("maneuver").set("tli", false);
+            commands.get("maneuver").set("loi", false);
+            commands.get("maneuver").set("descent", false);
+            commands.get("maneuver").set("ascent", false);
+            commands.get("maneuver").set("tei", false);
+            
+            // System commands
+            commands.set("systems", Object());
+            commands.get("systems").set("activate", Array<string>());
+            commands.get("systems").set("deactivate", Array<string>());
+        }
+        
+        void registerEventHandlers() {
+            // Register for power events
+            EventSystem.getInstance().addEventListener("power.depleted", (data) => {
+                Logger.getInstance().log("Power depleted event received", "WARNING");
+                abortMission("Critical power failure");
+            });
+            
+            // Register for life support events
+            EventSystem.getInstance().addEventListener("life_support.emergency", (data) => {
+                Logger.getInstance().log("Life support emergency event received", "WARNING");
+                if (data.asBool()) {
+                    // Only abort for persistent emergencies
+                    // In a real implementation, we would have more sophisticated handling
+                }
+            });
+            
+            // Register for reentry events
+            EventSystem.getInstance().addEventListener("reentry.critical_failure", (data) => {
+                Logger.getInstance().log("Reentry critical failure event received", "ERROR");
+                abortMission("Catastrophic reentry failure");
+            });
+        }
+        
+        void setMissionStage(MissionStage stage) {
+            currentStage = stage;
+            telemetry.get("mission").set("stage", stage);
+            Logger.getInstance().log("Mission stage changed to: " + getMissionStageName(stage));
+            EventSystem.getInstance().dispatchEvent("mission.stage_change", stage);
+        }
+        
+        MissionStage getMissionStage() {
+            return currentStage;
+        }
+        
+        string getMissionStageName(MissionStage stage) {
+            switch (stage) {
+                case MissionStage.PRELAUNCH: return "Prelaunch";
+                case MissionStage.LAUNCH: return "Launch";
+                case MissionStage.EARTH_ORBIT: return "Earth Orbit";
+                case MissionStage.TRANS_LUNAR_INJECTION: return "Trans-Lunar Injection";
+                case MissionStage.LUNAR_COAST: return "Lunar Coast";
+                case MissionStage.LUNAR_ORBIT_INSERTION: return "Lunar Orbit Insertion";
+                case MissionStage.LUNAR_ORBIT: return "Lunar Orbit";
+                case MissionStage.LUNAR_DESCENT: return "Lunar Descent";
+                case MissionStage.LUNAR_SURFACE: return "Lunar Surface";
+                case MissionStage.LUNAR_ASCENT: return "Lunar Ascent";
+                case MissionStage.LUNAR_RENDEZVOUS: return "Lunar Rendezvous";
+                case MissionStage.TRANS_EARTH_INJECTION: return "Trans-Earth Injection";
+                case MissionStage.EARTH_COAST: return "Earth Coast";
+                case MissionStage.REENTRY: return "Reentry";
+                case MissionStage.RECOVERY: return "Recovery";
+                default: return "Unknown";
+            }
+        }
+        
+        void abortMission(string reason) {
+            if (!missionAborted) {
+                missionAborted = true;
+                abortReason = reason;
+                telemetry.get("mission").set("aborted", true);
+                telemetry.get("mission").set("abort_reason", reason);
+                
+                Logger.getInstance().log("MISSION ABORTED: " + reason, "ERROR");
+                EventSystem.getInstance().dispatchEvent("mission.aborted", reason);
+            }
+        }
+        
+        bool isMissionAborted() {
+            return missionAborted;
+        }
+        
+        string getAbortReason() {
+            return abortReason;
+        }
+        
+        void processCommands() {
+            // Process mission commands
+            if (commands.get("mission").get("abort").asBool()) {
+                abortMission("Manual abort command received");
+                commands.get("mission").set("abort", false);
+            }
+            
+            // Process vehicle commands
+            if (commands.get("vehicle").get("launch").asBool()) {
+                if (currentStage == MissionStage.PRELAUNCH) {
+                    launchVehicle();
+                }
+                commands.get("vehicle").set("launch", false);
+            }
+            
+            if (commands.get("vehicle").get("separate_stage").asBool()) {
+                if (vehicle.isS1CAttached()) {
+                    vehicle.separateS1C();
+                } else if (vehicle.isS2Attached()) {
+                    vehicle.separateS2();
+                } else if (vehicle.isS4BAttached()) {
+                    vehicle.separateFromS4B();
+                }
+                commands.get("vehicle").set("separate_stage", false);
+            }
+            
+            if (commands.get("vehicle").get("engine_cutoff").asBool()) {
+                if (vehicle.isS4BAttached()) {
+                    vehicle.shutdownS4B();
+                }
+                commands.get("vehicle").set("engine_cutoff", false);
+            }
+            
+            // Process maneuver commands
+            if (commands.get("maneuver").get("tli").asBool()) {
+                if (currentStage == MissionStage.EARTH_ORBIT) {
+                    performTransLunarInjection();
+                }
+                commands.get("maneuver").set("tli", false);
+            }
+            
+            if (commands.get("maneuver").get("loi").asBool()) {
+                if (currentStage == MissionStage.LUNAR_COAST) {
+                    performLunarOrbitInsertion();
+                }
+                commands.get("maneuver").set("loi", false);
+            }
+            
+            if (commands.get("maneuver").get("descent").asBool()) {
+                if (currentStage == MissionStage.LUNAR_ORBIT) {
+                    performLunarDescent();
+                }
+                commands.get("maneuver").set("descent", false);
+            }
+            
+            if (commands.get("maneuver").get("ascent").asBool()) {
+                if (currentStage == MissionStage.LUNAR_SURFACE) {
+                    performLunarAscent();
+                }
+                commands.get("maneuver").set("ascent", false);
+            }
+            
+            if (commands.get("maneuver").get("tei").asBool()) {
+                if (currentStage == MissionStage.LUNAR_ORBIT) {
+                    performTransEarthInjection();
+                }
+                commands.get("maneuver").set("tei", false);
+            }
+            
+            // Process system commands
+            Array<string> systemsToActivate = commands.get("systems").get("activate").asArray();
+            for (int i = 0; i < systemsToActivate.size(); i++) {
+                string systemId = systemsToActivate[i];
+                
+                if (vehicle.hasSystem(systemId)) {
+                    vehicle.activateSystem(systemId);
+                } else if (cm.hasSystem(systemId)) {
+                    cm.activateSystem(systemId);
+                } else if (lm.hasSystem(systemId)) {
+                    lm.activateSystem(systemId);
+                }
+            }
+            commands.get("systems").set("activate", Array<string>());
+            
+            Array<string> systemsToDeactivate = commands.get("systems").get("deactivate").asArray();
+            for (int i = 0; i < systemsToDeactivate.size(); i++) {
+                string systemId = systemsToDeactivate[i];
+                
+                if (vehicle.hasSystem(systemId)) {
+                    vehicle.deactivateSystem(systemId);
+                } else if (cm.hasSystem(systemId)) {
+                    cm.deactivateSystem(systemId);
+                } else if (lm.hasSystem(systemId)) {
+                    lm.deactivateSystem(systemId);
+                }
+            }
+            commands.get("systems").set("deactivate", Array<string>());
+        }
+        
+        void updateTelemetry() {
+            // Update vehicle telemetry
+            StateVector state = vehicle.getState();
+            telemetry.get("vehicle").set("position", state.position);
+            telemetry.get("vehicle").set("velocity", state.velocity);
+            
+            // Calculate altitude
+            double altitude = state.position.length() - Constants.EARTH_RADIUS;
+            if (currentStage >= MissionStage.LUNAR_ORBIT_INSERTION && currentStage <= MissionStage.LUNAR_RENDEZVOUS) {
+                // Near the Moon, calculate altitude from lunar surface
+                double distanceToMoonCenter = (state.position - Vector3(Constants.MOON_DISTANCE, 0, 0)).length();
+                altitude = distanceToMoonCenter - Constants.MOON_RADIUS;
+            }
+            telemetry.get("vehicle").set("altitude", altitude);
+            telemetry.get("vehicle").set("speed", state.velocity.length());
+            
+            // Update mission telemetry
+            telemetry.get("mission").set("time", MissionTime.getInstance().getCurrentTime());
+            telemetry.get("mission").set("formatted_time", MissionTime.getInstance().getFormattedTime());
+            
+            // Update systems telemetry
+            // This would be more detailed in a real implementation
+            telemetry.get("systems").set("propulsion", vehicle.getSystem("s1c_propulsion").getStatus());
+            telemetry.get("systems").set("gnc", vehicle.getSystem("gnc").getStatus());
+            telemetry.get("systems").set("power", vehicle.getSystem("power").getStatus());
+        }
+        
+        void launchVehicle() {
+            Logger.getInstance().log("Initiating launch sequence");
+            
+            // Set mission stage to LAUNCH
+            setMissionStage(MissionStage.LAUNCH);
+            
+            // Activate vehicle systems
+            vehicle.activateAllSystems();
+            
+            // Start launch sequence
+            vehicle.launchSequence();
+            
+            // Set initial state
+            Vector3 launchSite = CoordinateTransform.geodeticToEci(
+                MissionConfig.LAUNCH_SITE,
+                MissionTime.getInstance().getJulianDate()
+            );
+            
+            StateVector initialState = StateVector(launchSite, Vector3(0, 0, 0));
+            vehicle.setState(initialState);
+            
+            Logger.getInstance().log("Vehicle launched from " + MissionConfig.LAUNCH_SITE.toString());
+        }
+        
+        void performTransLunarInjection() {
+            Logger.getInstance().log("Initiating Trans-Lunar Injection (TLI) maneuver");
+            
+            // Set mission stage to TLI
+            setMissionStage(MissionStage.TRANS_LUNAR_INJECTION);
+            
+            // Restart S-IVB engine
+            vehicle.restartS4B();
+            
+            // TLI burn will be simulated in the update method
+            // After burn completion, we'll separate from S-IVB and extract LM
+        }
+        
+        void performLunarOrbitInsertion() {
+            Logger.getInstance().log("Initiating Lunar Orbit Insertion (LOI) maneuver");
+            
+            // Set mission stage to LOI
+            setMissionStage(MissionStage.LUNAR_ORBIT_INSERTION);
+            
+            // Activate CSM propulsion
+            cm.activateSystem("propulsion");
+            
+            // Start LOI burn
+            PropulsionSystem sps = cm.getSystem("propulsion").as<PropulsionSystem>();
+            sps.startThrust(1.0, Vector3(-1, 0, 0)); // Retrograde burn
+            
+            // LOI burn will be simulated in the update method
+        }
+        
+        void performLunarDescent() {
+            Logger.getInstance().log("Initiating Lunar Descent");
+            
+            // Set mission stage to LUNAR_DESCENT
+            setMissionStage(MissionStage.LUNAR_DESCENT);
+            
+            // Undock LM from CSM
+            cm.undock();
+            
+            // Activate LM systems
+            lm.activateAllSystems();
+            
+            // Deploy landing gear
+            lm.deployLandingGear();
+            
+            // Start powered descent
+            lm.performPoweredDescent(MissionConfig.LANDING_SITE);
+            
+            // Descent will be simulated in the update method
+        }
+        
+        void performLunarAscent() {
+            Logger.getInstance().log("Initiating Lunar Ascent");
+            
+            // Set mission stage to LUNAR_ASCENT
+            setMissionStage(MissionStage.LUNAR_ASCENT);
+            
+            // Start ascent stage
+            lm.performAscentStage();
+            
+            // Ascent will be simulated in the update method
+        }
+        
+        void performTransEarthInjection() {
+            Logger.getInstance().log("Initiating Trans-Earth Injection (TEI) maneuver");
+            
+            // Set mission stage to TEI
+            setMissionStage(MissionStage.TRANS_EARTH_INJECTION);
+            
+            // Activate CSM propulsion
+            cm.activateSystem("propulsion");
+            
+            // Start TEI burn
+            PropulsionSystem sps = cm.getSystem("propulsion").as<PropulsionSystem>();
+            sps.startThrust(1.0, Vector3(1, 0, 0)); // Prograde burn
+            
+            // TEI burn will be simulated in the update method
+        }
+        
+        void update(double dt) {
+            // Skip update if mission is aborted
+            if (missionAborted) {
+                return;
+            }
+            
+            // Process commands
+            processCommands();
+            
+            // Update spacecraft
+            vehicle.update(dt);
+            
+            // Update telemetry
+            updateTelemetry();
+            
+            // Check for mission stage transitions
+            checkMissionStageTransitions();
+            
+            // Check for mission events
+            checkMissionEvents();
+        }
+        
+        void checkMissionStageTransitions() {
+            double missionTime = MissionTime.getInstance().getCurrentTime();
+            StateVector state = vehicle.getState();
+            
+            switch (currentStage) {
+                case MissionStage.LAUNCH:
+                    // Transition to EARTH_ORBIT when altitude and velocity are sufficient
+                    if (state.position.length() > Constants.EARTH_RADIUS + MissionConfig.PARKING_ORBIT_ALTITUDE * 0.95 &&
+                        state.velocity.length() > sqrt(Constants.EARTH_MU / (Constants.EARTH_RADIUS + MissionConfig.PARKING_ORBIT_ALTITUDE)) * 0.95) {
+                        setMissionStage(MissionStage.EARTH_ORBIT);
+                        
+                        // Shutdown S-IVB engine
+                        vehicle.shutdownS4B();
+                        
+                        Logger.getInstance().log("Earth orbit achieved");
+                    }
+                    break;
+                    
+                case MissionStage.TRANS_LUNAR_INJECTION:
+                    // Transition to LUNAR_COAST after TLI burn
+                    if (missionTime > MissionConfig.T_TLI_CUTOFF) {
+                        setMissionStage(MissionStage.LUNAR_COAST);
+                        
+                        // Shutdown S-IVB engine
+                        vehicle.shutdownS4B();
+                        
+                        // Separate CSM
+                        vehicle.separateCSM();
+                        
+                        // Extract LM
+                        vehicle.extractLM();
+                        
+                        // Separate from S-IVB
+                        vehicle.separateFromS4B();
+                        
+                        Logger.getInstance().log("Trans-lunar coast phase begun");
+                    }
+                    break;
+                    
+                case MissionStage.LUNAR_ORBIT_INSERTION:
+                    // Transition to LUNAR_ORBIT after LOI burn
+                    // In a real simulation, we would check orbital parameters
+                    if (missionTime > MissionConfig.T_LUNAR_ORBIT_INSERTION + 500) {
+                        setMissionStage(MissionStage.LUNAR_ORBIT);
+                        
+                        // Stop SPS engine
+                        PropulsionSystem sps = cm.getSystem("propulsion").as<PropulsionSystem>();
+                        sps.stopThrust();
+                        
+                        Logger.getInstance().log("Lunar orbit achieved");
+                    }
+                    break;
+                    
+                case MissionStage.LUNAR_DESCENT:
+                    // Transition to LUNAR_SURFACE after landing
+                    if (lm.isOnSurface()) {
+                        setMissionStage(MissionStage.LUNAR_SURFACE);
+                        Logger.getInstance().log("Lunar landing successful at " + lm.getLandingSite().toString());
+                    }
+                    break;
+                    
+                case MissionStage.LUNAR_ASCENT:
+                    // Transition to LUNAR_RENDEZVOUS after reaching orbit
+                    // In a real simulation, we would check for proximity to CSM
+                    if (missionTime > MissionConfig.T_LUNAR_ASCENT + 500) {
+                        setMissionStage(MissionStage.LUNAR_RENDEZVOUS);
+                        Logger.getInstance().log("Lunar ascent complete, beginning rendezvous with CSM");
+                    }
+                    break;
+                    
+                case MissionStage.LUNAR_RENDEZVOUS:
+                    // Transition to LUNAR_ORBIT after docking
+                    // In a real simulation, we would check for successful docking
+                    if (missionTime > MissionConfig.T_LUNAR_RENDEZVOUS + 500) {
+                        setMissionStage(MissionStage.LUNAR_ORBIT);
+                        
+                        // Dock CSM with LM
+                        cm.dockWith(lm);
+                        
+                        Logger.getInstance().log("Rendezvous and docking complete");
+                    }
+                    break;
+                    
+                case MissionStage.TRANS_EARTH_INJECTION:
+                    // Transition to EARTH_COAST after TEI burn
+                    if (missionTime > MissionConfig.T_TRANS_EARTH_INJECTION + 500) {
+                        setMissionStage(MissionStage.EARTH_COAST);
+                        
+                        // Stop SPS engine
+                        PropulsionSystem sps = cm.getSystem("propulsion").as<PropulsionSystem>();
+                        sps.stopThrust();
+                        
+                        Logger.getInstance().log("Trans-Earth coast phase begun");
+                    }
+                    break;
+                    
+                case MissionStage.EARTH_COAST:
+                    // Transition to REENTRY when approaching Earth
+                    if (missionTime > MissionConfig.T_REENTRY - 500) {
+                        setMissionStage(MissionStage.REENTRY);
+                        
+                        // Perform reentry
+                        cm.performReentry(-6.5); // Entry angle in degrees
+                        
+                        Logger.getInstance().log("Beginning reentry sequence");
+                    }
+                    break;
+                    
+                case MissionStage.REENTRY:
+                    // Transition to RECOVERY after splashdown
+                    if (missionTime > MissionConfig.T_SPLASHDOWN) {
+                        setMissionStage(MissionStage.RECOVERY);
+                        Logger.getInstance().log("Splashdown successful, recovery operations underway");
+                    }
+                    break;
+            }
+        }
+        
+        void checkMissionEvents() {
+            double missionTime = MissionTime.getInstance().getCurrentTime();
+            
+            // Check for S-IC cutoff
+            if (currentStage == MissionStage.LAUNCH && missionTime > MissionConfig.T_S1C_CUTOFF && vehicle.isS1CAttached()) {
+                vehicle.separateS1C();
+            }
+            
+            // Check for S-II cutoff
+            if (currentStage == MissionStage.LAUNCH && missionTime > MissionConfig.T_S2_CUTOFF && vehicle.isS2Attached()) {
+                vehicle.separateS2();
+            }
+            
+            // Check for first S-IVB cutoff
+            if (currentStage == MissionStage.LAUNCH && missionTime > MissionConfig.T_S4B_CUTOFF_1) {
+                vehicle.shutdownS4B();
+            }
+            
+            // Check for TLI ignition
+            if (currentStage == MissionStage.EARTH_ORBIT && missionTime > MissionConfig.T_TLI_IGNITION) {
+                performTransLunarInjection();
+            }
+            
+            // Check for LOI
+            if (currentStage == MissionStage.LUNAR_COAST && missionTime > MissionConfig.T_LUNAR_ORBIT_INSERTION) {
+                performLunarOrbitInsertion();
+            }
+            
+            // Check for LM separation
+            if (currentStage == MissionStage.LUNAR_ORBIT && missionTime > MissionConfig.T_LM_SEPARATION) {
+                performLunarDescent();
+            }
+            
+            // Check for lunar ascent
+            if (currentStage == MissionStage.LUNAR_SURFACE && missionTime > MissionConfig.T_LUNAR_ASCENT) {
+                performLunarAscent();
+            }
+            
+            // Check for TEI
+            if (currentStage == MissionStage.LUNAR_ORBIT && missionTime > MissionConfig.T_TRANS_EARTH_INJECTION && !cm.isDocked()) {
+                performTransEarthInjection();
+            }
+        }
+        
+        Object getTelemetry() {
+            return telemetry;
+        }
+        
+        void issueCommand(string category, string command, Value value = true) {
+            if (commands.has(category)) {
+                if (commands.get(category).has(command)) {
+                    commands.get(category).set(command, value);
+                    Logger.getInstance().log("Command issued: " + category + "." + command + " = " + value.toString());
+                }
+            }
+        }
+    }
+
+// =====================================================================
+// TELEMETRY MONITORING
+// =====================================================================
+
+/**
+ * Telemetry monitor task
+ */
+class TelemetryMonitor : Task {
+    private:
+        MissionControl missionControl;
+        int updateInterval; // seconds
+        
+    public:
+        TelemetryMonitor(MissionControl mc, int interval = 5) {
+            missionControl = mc;
+            updateInterval = interval;
+        }
+        
+        void execute() override {
+            while (true) {
+                Object telemetry = missionControl.getTelemetry();
+                
+                // Log telemetry
+                Logger.getInstance().log("--- TELEMETRY UPDATE ---");
+                
+                // Mission status
+                Logger.getInstance().log("Mission Stage: " + missionControl.getMissionStageName(telemetry.get("mission").get("stage").as<MissionStage>()));
+                Logger.getInstance().log("Mission Time: " + telemetry.get("mission").get("formatted_time").asString());
+                
+                // Vehicle status
+                double altitude = telemetry.get("vehicle").get("altitude").asDouble() / 1000.0; // Convert to km
+                double speed = telemetry.get("vehicle").get("speed").asDouble() / 1000.0; // Convert to km/s
+                Logger.getInstance().log("Altitude: " + altitude + " km");
+                Logger.getInstance().log("Speed: " + speed + " km/s");
+                
+                // Systems status
+                // This would be more detailed in a real implementation
+                
+                sleep(updateInterval);
+            }
+        }
+    }
+
+// =====================================================================
+// MAIN SIMULATION
+// =====================================================================
+
+/**
+ * Main simulation class
+ */
+class Apollo11Simulation {
+    private:
+        MissionControl missionControl;
+        TelemetryMonitor telemetryMonitor;
+        double simulationTimeStep; // seconds
+        double simulationEndTime;  // seconds
+        double timeScale;
+        
+    public:
+        Apollo11Simulation() {
+            missionControl = new MissionControl();
+            telemetryMonitor = new TelemetryMonitor(missionControl);
+            
+            // Load configuration
+            simulationTimeStep = ConfigurationManager.getInstance().get<double>("simulation.time_step", 0.1);
+            simulationEndTime = MissionConfig.T_SPLASHDOWN + 3600; // One hour after splashdown
+            timeScale = 1.0;
+        }
+        
+        void setTimeScale(double scale) {
+            timeScale = max(0.1, min(1000.0, scale));
+            MissionTime.getInstance().setTimeScale(timeScale);
+            Logger.getInstance().log("Simulation time scale set to " + timeScale + "x");
+        }
+        
+        double getTimeScale() {
+            return timeScale;
+        }
+        
+        void runSimulation() {
+            Logger.getInstance().log("Starting Apollo 11 mission simulation");
+            
+            // Start telemetry monitor
+            startTask(telemetryMonitor);
+            
+            // Main simulation loop
+            while (MissionTime.getInstance().getCurrentTime() < simulationEndTime) {
+                // Update mission control
+                missionControl.update(simulationTimeStep);
+                
+                // Advance simulation time
+                MissionTime.getInstance().advanceTime(simulationTimeStep);
+                
+                // Check for mission abort
+                if (missionControl.isMissionAborted()) {
+                    Logger.getInstance().log("Simulation terminated due to mission abort: " + missionControl.getAbortReason());
+                    break;
+                }
+                
+                // Sleep to allow real-time interaction
+                // This would be adjusted based on time scale in a real implementation
+                sleep(simulationTimeStep / timeScale);
+            }
+            
+            Logger.getInstance().log("Apollo 11 mission simulation complete");
+        }
+    }
+
+// =====================================================================
+// MAIN FUNCTION
+// =====================================================================
+
+/**
+ * Main function
+ */
+function main() {
+    // Initialize logger
+    Logger.getInstance().log("Apollo 11 Mission Simulation");
+    Logger.getInstance().log("July 16-24, 1969");
+    
+    // Load configuration
+    ConfigurationManager.getInstance().loadDefaultConfiguration();
+    
+    // Create and run simulation
+    Apollo11Simulation simulation = new Apollo11Simulation();
+    
+    // Set time scale (faster than real-time for demonstration)
+    simulation.setTimeScale(100.0);
+    
+    // Run the simulation
+    simulation.runSimulation();
+    
+    return 0;
+}
+
+// Run the simulation
+main();
