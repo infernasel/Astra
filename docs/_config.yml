@@ -1,0 +1,35 @@
+title: ASTRA Programming Language
+description: A specialized programming language for spacecraft and UAV control
+theme: jekyll-theme-cayman
+logo: /assets/images/astra_logo.png
+show_downloads: true
+github:
+  repository_url: https://github.com/infernasel/astra-language
+  zip_url: https://github.com/infernasel/astra-language/archive/refs/heads/main.zip
+  tar_url: https://github.com/infernasel/astra-language/archive/refs/heads/main.tar.gz
+  owner_url: https://github.com/infernasel
+  owner_name: infernasel
+
+# Navigation
+navigation:
+  - title: Home
+    url: /
+  - title: Getting Started
+    url: /getting_started.html
+  - title: Language Specification
+    url: /language_specification.html
+  - title: Standard Library
+    url: /standard_library.html
+  - title: Advanced Features
+    url: /advanced_features.html
+  - title: Safety Features
+    url: /safety_features.html
+  - title: Hardware Integration
+    url: /hardware_integration.html
+  - title: Russian Documentation
+    url: /ru/
+
+# Multilingual support
+languages:
+  - en
+  - ru
