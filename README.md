@@ -104,4 +104,9 @@ task NavigateToPoint(point: Vec3) {
 
 ## License
 
-MIT License
+This project is available under two licensing options:
+
+1. [MIT License](LICENSE) - For non-commercial and educational use
+2. [Custom License](CUSTOM_LICENSE.md) - For commercial use in aerospace and UAV applications
+
+Please review both licenses carefully before using this software.
