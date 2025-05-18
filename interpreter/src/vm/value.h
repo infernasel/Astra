@@ -108,6 +108,12 @@ public:
     // Assignment operator
     Value& operator=(const Value& other);
     
+    // Equality operators
+    bool operator==(const Value& other) const;
+    bool operator!=(const Value& other) const {
+        return !(*this == other);
+    }
+    
     // Type checking
     bool isNull() const { return type == ValueType::Null; }
     bool isBoolean() const { return type == ValueType::Boolean; }
@@ -195,6 +201,10 @@ public:
         return Vector2(x / scalar, y / scalar);
     }
     
+    bool operator==(const Vector2& other) const {
+        return x == other.x && y == other.y;
+    }
+    
     double length() const {
         return sqrt(x * x + y * y);
     }
@@ -238,6 +248,10 @@ public:
     
     Vector3 operator/(double scalar) const {
         return Vector3(x / scalar, y / scalar, z / scalar);
+    }
+    
+    bool operator==(const Vector3& other) const {
+        return x == other.x && y == other.y && z == other.z;
     }
     
     double length() const {
@@ -291,6 +305,10 @@ public:
     
     Vector4 operator/(double scalar) const {
         return Vector4(x / scalar, y / scalar, z / scalar, w / scalar);
+    }
+    
+    bool operator==(const Vector4& other) const {
+        return x == other.x && y == other.y && z == other.z && w == other.w;
     }
     
     double length() const {
@@ -368,6 +386,10 @@ public:
             sy * cp * sr + cy * sp * cr,
             sy * cp * cr - cy * sp * sr
         );
+    }
+    
+    bool operator==(const Quaternion& other) const {
+        return w == other.w && x == other.x && y == other.y && z == other.z;
     }
     
     std::string toString() const {
@@ -469,6 +491,30 @@ public:
         return result;
     }
     
+    bool operator==(const Matrix& other) const {
+        for (int i = 0; i < 16; i++) {
+            if (m[i] != other.m[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    size_t getRows() const {
+        return 4;
+    }
+    
+    size_t getCols() const {
+        return 4;
+    }
+    
+    double get(size_t row, size_t col) const {
+        if (row >= 4 || col >= 4) {
+            throw std::out_of_range("Matrix index out of range");
+        }
+        return m[col * 4 + row];
+    }
+    
     std::string toString() const {
         std::string result = "Matrix(\n";
         for (int row = 0; row < 4; row++) {
@@ -495,23 +541,16 @@ public:
     std::string getMessage() const {
         return message;
     }
+    
+    bool operator==(const Error& other) const {
+        return message == other.message;
+    }
 };
 
 /**
  * Environment class for variable scoping
  */
-class Environment {
-public:
-    std::unordered_map<std::string, Value> variables;
-    std::shared_ptr<Environment> outer;
-    
-    Environment() : outer(nullptr) {}
-    Environment(std::shared_ptr<Environment> outer_) : outer(outer_) {}
-    
-    void set(const std::string& name, const Value& value);
-    bool has(const std::string& name) const;
-    Value get(const std::string& name) const;
-};
+// Environment class is defined in environment.h
 
 /**
  * Function class
@@ -633,7 +672,15 @@ public:
         return elements.size();
     }
     
+    bool empty() const {
+        return elements.empty();
+    }
+    
     std::vector<Value>& getElements() {
+        return elements;
+    }
+    
+    const std::vector<Value>& getElements() const {
         return elements;
     }
 };
@@ -646,25 +693,40 @@ private:
     std::string name;
     std::function<void()> callback;
     bool isRunning;
-    
+    bool active;
+
 public:
     Task(const std::string& name_, std::function<void()> callback_)
-        : name(name_), callback(callback_), isRunning(false) {}
-    
+        : name(name_), callback(callback_), isRunning(false), active(true) {}
+
     std::string getName() const {
         return name;
     }
-    
+
     void run() {
         callback();
     }
     
+    void execute() {
+        if (active) {
+            callback();
+        }
+    }
+
     bool getIsRunning() const {
         return isRunning;
     }
-    
+
     void setIsRunning(bool running) {
         isRunning = running;
+    }
+    
+    bool isActive() const {
+        return active;
+    }
+    
+    void setActive(bool value) {
+        active = value;
     }
 };
 
