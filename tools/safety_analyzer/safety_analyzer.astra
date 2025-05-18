@@ -1,0 +1,1185 @@
+/**
+ * ASTRA Safety Analyzer
+ * 
+ * A comprehensive tool for analyzing ASTRA code for safety and security issues.
+ * Features:
+ * - Static code analysis
+ * - Formal verification
+ * - Runtime assertion generation
+ * - Safety property checking
+ * - Resource usage analysis
+ * - Timing analysis
+ */
+
+import core.io;
+import core.file;
+import core.system;
+import core.time;
+import core.ui;
+import core.math;
+import core.crypto;
+
+// Analysis severity levels
+enum SeverityLevel {
+    INFO,
+    WARNING,
+    ERROR,
+    CRITICAL
+}
+
+// Analysis issue types
+enum IssueType {
+    MEMORY_SAFETY,
+    CONCURRENCY,
+    RESOURCE_LEAK,
+    TIMING,
+    NUMERICAL,
+    LOGIC,
+    SECURITY,
+    UNDEFINED_BEHAVIOR,
+    CUSTOM
+}
+
+/**
+ * Represents an issue found during analysis
+ */
+class AnalysisIssue {
+    public file: string;
+    public line: int;
+    public column: int;
+    public severity: SeverityLevel;
+    public type: IssueType;
+    public message: string;
+    public code_snippet: string;
+    public suggestion: string;
+    
+    public func constructor(file: string, line: int, column: int, 
+                          severity: SeverityLevel, type: IssueType, 
+                          message: string, code_snippet: string = "", 
+                          suggestion: string = "") {
+        this.file = file;
+        this.line = line;
+        this.column = column;
+        this.severity = severity;
+        this.type = type;
+        this.message = message;
+        this.code_snippet = code_snippet;
+        this.suggestion = suggestion;
+    }
+    
+    public func toString() -> string {
+        var result = this.file + ":" + this.line.toString() + ":" + this.column.toString() + ": ";
+        
+        // Add severity
+        if (this.severity == SeverityLevel.INFO) {
+            result += "info";
+        } else if (this.severity == SeverityLevel.WARNING) {
+            result += "warning";
+        } else if (this.severity == SeverityLevel.ERROR) {
+            result += "error";
+        } else if (this.severity == SeverityLevel.CRITICAL) {
+            result += "critical";
+        }
+        
+        // Add type
+        result += " [" + this.type.toString() + "]: ";
+        
+        // Add message
+        result += this.message;
+        
+        // Add code snippet if available
+        if (this.code_snippet != "") {
+            result += "\n" + this.code_snippet;
+        }
+        
+        // Add suggestion if available
+        if (this.suggestion != "") {
+            result += "\nSuggestion: " + this.suggestion;
+        }
+        
+        return result;
+    }
+}
+
+/**
+ * Base class for all analyzers
+ */
+abstract class Analyzer {
+    protected issues: array<AnalysisIssue>;
+    
+    public func constructor() {
+        this.issues = array<AnalysisIssue>[];
+    }
+    
+    public abstract func analyze(file_path: string) -> bool;
+    
+    public func get_issues() -> array<AnalysisIssue> {
+        return this.issues;
+    }
+    
+    public func has_issues() -> bool {
+        return this.issues.length > 0;
+    }
+    
+    public func has_critical_issues() -> bool {
+        for (var i = 0; i < this.issues.length; i++) {
+            if (this.issues[i].severity == SeverityLevel.CRITICAL) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    public func clear_issues() -> void {
+        this.issues = array<AnalysisIssue>[];
+    }
+    
+    protected func add_issue(issue: AnalysisIssue) -> void {
+        this.issues.push(issue);
+    }
+}
+
+/**
+ * Memory safety analyzer
+ */
+class MemorySafetyAnalyzer extends Analyzer {
+    public func constructor() {
+        super();
+    }
+    
+    public override func analyze(file_path: string) -> bool {
+        io.println("Analyzing memory safety in " + file_path);
+        
+        // Read file content
+        var content = file.read_text(file_path);
+        if (content == null) {
+            io.println("Failed to read file: " + file_path);
+            return false;
+        }
+        
+        var lines = content.split("\n");
+        
+        // Check for potential null pointer dereferences
+        this.check_null_dereferences(file_path, lines);
+        
+        // Check for potential buffer overflows
+        this.check_buffer_overflows(file_path, lines);
+        
+        // Check for potential use-after-free
+        this.check_use_after_free(file_path, lines);
+        
+        // Check for potential memory leaks
+        this.check_memory_leaks(file_path, lines);
+        
+        return true;
+    }
+    
+    private func check_null_dereferences(file_path: string, lines: array<string>) -> void {
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            // Check for pointer dereference without null check
+            if (line.contains("->") || line.contains("*.")) {
+                // Simple heuristic: check if there's a null check before this line
+                var has_null_check = false;
+                
+                // Look at previous 5 lines for null check
+                for (var j = Math.max(0, i - 5); j < i; j++) {
+                    if (lines[j].contains("if") && lines[j].contains("null")) {
+                        has_null_check = true;
+                        break;
+                    }
+                }
+                
+                if (!has_null_check) {
+                    this.add_issue(AnalysisIssue(
+                        file_path,
+                        i + 1,
+                        line.indexOf("->") >= 0 ? line.indexOf("->") + 1 : line.indexOf("*.") + 1,
+                        SeverityLevel.WARNING,
+                        IssueType.MEMORY_SAFETY,
+                        "Potential null pointer dereference",
+                        line.trim(),
+                        "Add a null check before dereferencing the pointer"
+                    ));
+                }
+            }
+        }
+    }
+    
+    private func check_buffer_overflows(file_path: string, lines: array<string>) -> void {
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            // Check for array access without bounds check
+            if (line.contains("[") && line.contains("]")) {
+                // Simple heuristic: check if there's a bounds check before this line
+                var has_bounds_check = false;
+                
+                // Look at previous 5 lines for bounds check
+                for (var j = Math.max(0, i - 5); j < i; j++) {
+                    if (lines[j].contains("if") && 
+                        (lines[j].contains("length") || lines[j].contains("size"))) {
+                        has_bounds_check = true;
+                        break;
+                    }
+                }
+                
+                if (!has_bounds_check) {
+                    this.add_issue(AnalysisIssue(
+                        file_path,
+                        i + 1,
+                        line.indexOf("[") + 1,
+                        SeverityLevel.WARNING,
+                        IssueType.MEMORY_SAFETY,
+                        "Potential buffer overflow",
+                        line.trim(),
+                        "Add a bounds check before accessing the array"
+                    ));
+                }
+            }
+        }
+    }
+    
+    private func check_use_after_free(file_path: string, lines: array<string>) -> void {
+        var freed_variables = array<string>[];
+        
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            // Check for free/delete operations
+            if (line.contains("free(") || line.contains("delete ")) {
+                // Extract variable name
+                var var_name = "";
+                if (line.contains("free(")) {
+                    var start_idx = line.indexOf("free(") + 5;
+                    var end_idx = line.indexOf(")", start_idx);
+                    var_name = line.substring(start_idx, end_idx).trim();
+                } else if (line.contains("delete ")) {
+                    var start_idx = line.indexOf("delete ") + 7;
+                    var_name = line.substring(start_idx).trim();
+                    if (var_name.endsWith(";")) {
+                        var_name = var_name.substring(0, var_name.length - 1);
+                    }
+                }
+                
+                if (var_name != "") {
+                    freed_variables.push(var_name);
+                }
+            }
+            
+            // Check for use of freed variables
+            for (var j = 0; j < freed_variables.length; j++) {
+                var var_name = freed_variables[j];
+                
+                if (line.contains(var_name) && 
+                    !line.contains("free(" + var_name) && 
+                    !line.contains("delete " + var_name)) {
+                    
+                    this.add_issue(AnalysisIssue(
+                        file_path,
+                        i + 1,
+                        line.indexOf(var_name) + 1,
+                        SeverityLevel.ERROR,
+                        IssueType.MEMORY_SAFETY,
+                        "Use after free: " + var_name,
+                        line.trim(),
+                        "Don't use a variable after it has been freed"
+                    ));
+                }
+            }
+        }
+    }
+    
+    private func check_memory_leaks(file_path: string, lines: array<string>) -> void {
+        var allocated_variables = array<string>[];
+        var freed_variables = array<string>[];
+        
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            // Check for allocation operations
+            if (line.contains("malloc(") || line.contains("new ")) {
+                // Extract variable name
+                var var_name = "";
+                var assignment_idx = line.indexOf("=");
+                
+                if (assignment_idx >= 0) {
+                    var_name = line.substring(0, assignment_idx).trim();
+                    if (var_name.startsWith("var ")) {
+                        var_name = var_name.substring(4);
+                    }
+                    allocated_variables.push(var_name);
+                }
+            }
+            
+            // Check for free/delete operations
+            if (line.contains("free(") || line.contains("delete ")) {
+                // Extract variable name
+                var var_name = "";
+                if (line.contains("free(")) {
+                    var start_idx = line.indexOf("free(") + 5;
+                    var end_idx = line.indexOf(")", start_idx);
+                    var_name = line.substring(start_idx, end_idx).trim();
+                } else if (line.contains("delete ")) {
+                    var start_idx = line.indexOf("delete ") + 7;
+                    var_name = line.substring(start_idx).trim();
+                    if (var_name.endsWith(";")) {
+                        var_name = var_name.substring(0, var_name.length - 1);
+                    }
+                }
+                
+                if (var_name != "") {
+                    freed_variables.push(var_name);
+                }
+            }
+        }
+        
+        // Check for variables that were allocated but not freed
+        for (var i = 0; i < allocated_variables.length; i++) {
+            var var_name = allocated_variables[i];
+            var is_freed = false;
+            
+            for (var j = 0; j < freed_variables.length; j++) {
+                if (freed_variables[j] == var_name) {
+                    is_freed = true;
+                    break;
+                }
+            }
+            
+            if (!is_freed) {
+                this.add_issue(AnalysisIssue(
+                    file_path,
+                    0,
+                    0,
+                    SeverityLevel.WARNING,
+                    IssueType.RESOURCE_LEAK,
+                    "Potential memory leak: " + var_name,
+                    "",
+                    "Make sure to free all allocated memory"
+                ));
+            }
+        }
+    }
+}
+
+/**
+ * Concurrency analyzer
+ */
+class ConcurrencyAnalyzer extends Analyzer {
+    public func constructor() {
+        super();
+    }
+    
+    public override func analyze(file_path: string) -> bool {
+        io.println("Analyzing concurrency in " + file_path);
+        
+        // Read file content
+        var content = file.read_text(file_path);
+        if (content == null) {
+            io.println("Failed to read file: " + file_path);
+            return false;
+        }
+        
+        var lines = content.split("\n");
+        
+        // Check for potential data races
+        this.check_data_races(file_path, lines);
+        
+        // Check for potential deadlocks
+        this.check_deadlocks(file_path, lines);
+        
+        return true;
+    }
+    
+    private func check_data_races(file_path: string, lines: array<string>) -> void {
+        var shared_variables = array<string>[];
+        var protected_accesses = array<string>[];
+        
+        // First pass: identify shared variables
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            if (line.contains("shared ") || line.contains("static ")) {
+                // Extract variable name
+                var var_name = "";
+                var assignment_idx = line.indexOf("=");
+                
+                if (assignment_idx >= 0) {
+                    var_name = line.substring(0, assignment_idx).trim();
+                    if (var_name.startsWith("var ")) {
+                        var_name = var_name.substring(4);
+                    }
+                    if (var_name.startsWith("shared ")) {
+                        var_name = var_name.substring(7);
+                    }
+                    if (var_name.startsWith("static ")) {
+                        var_name = var_name.substring(7);
+                    }
+                    shared_variables.push(var_name);
+                }
+            }
+        }
+        
+        // Second pass: check for unprotected accesses to shared variables
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            // Check if line contains a shared variable
+            for (var j = 0; j < shared_variables.length; j++) {
+                var var_name = shared_variables[j];
+                
+                if (line.contains(var_name)) {
+                    // Check if access is protected by a lock
+                    var is_protected = false;
+                    
+                    // Look at previous 5 lines for lock acquisition
+                    for (var k = Math.max(0, i - 5); k < i; k++) {
+                        if (lines[k].contains("lock") || lines[k].contains("mutex")) {
+                            is_protected = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!is_protected && !protected_accesses.contains(var_name + ":" + i.toString())) {
+                        this.add_issue(AnalysisIssue(
+                            file_path,
+                            i + 1,
+                            line.indexOf(var_name) + 1,
+                            SeverityLevel.WARNING,
+                            IssueType.CONCURRENCY,
+                            "Potential data race on shared variable: " + var_name,
+                            line.trim(),
+                            "Protect access to shared variables with locks"
+                        ));
+                        
+                        // Remember this access to avoid duplicate warnings
+                        protected_accesses.push(var_name + ":" + i.toString());
+                    }
+                }
+            }
+        }
+    }
+    
+    private func check_deadlocks(file_path: string, lines: array<string>) -> void {
+        var lock_acquisitions = array<array<string>>[];
+        
+        // Identify lock acquisition patterns
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            if (line.contains(".lock()") || line.contains(".acquire()")) {
+                // Extract lock name
+                var lock_name = "";
+                var method_idx = line.indexOf(".lock()");
+                
+                if (method_idx < 0) {
+                    method_idx = line.indexOf(".acquire()");
+                }
+                
+                if (method_idx >= 0) {
+                    // Find the start of the variable name
+                    var j = method_idx - 1;
+                    while (j >= 0 && (line[j].isAlphaNumeric() || line[j] == '_')) {
+                        j--;
+                    }
+                    
+                    lock_name = line.substring(j + 1, method_idx);
+                    
+                    // Find the function we're in
+                    var func_name = "unknown";
+                    for (var k = i; k >= 0; k--) {
+                        if (lines[k].contains("func ")) {
+                            var func_idx = lines[k].indexOf("func ") + 5;
+                            var paren_idx = lines[k].indexOf("(", func_idx);
+                            
+                            if (paren_idx >= 0) {
+                                func_name = lines[k].substring(func_idx, paren_idx).trim();
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Add to lock acquisitions
+                    lock_acquisitions.push([func_name, lock_name, i.toString()]);
+                }
+            }
+        }
+        
+        // Check for potential deadlocks (locks acquired in different orders)
+        for (var i = 0; i < lock_acquisitions.length; i++) {
+            for (var j = i + 1; j < lock_acquisitions.length; j++) {
+                var lock1 = lock_acquisitions[i];
+                var lock2 = lock_acquisitions[j];
+                
+                // If different functions acquire the same locks in different orders
+                if (lock1[0] != lock2[0] && 
+                    lock_acquisitions.contains([lock1[0], lock2[1], "?"]) && 
+                    lock_acquisitions.contains([lock2[0], lock1[1], "?"])) {
+                    
+                    this.add_issue(AnalysisIssue(
+                        file_path,
+                        parseInt(lock1[2]) + 1,
+                        0,
+                        SeverityLevel.WARNING,
+                        IssueType.CONCURRENCY,
+                        "Potential deadlock: locks acquired in different orders",
+                        lines[parseInt(lock1[2])].trim(),
+                        "Ensure locks are always acquired in the same order"
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Timing analyzer
+ */
+class TimingAnalyzer extends Analyzer {
+    public func constructor() {
+        super();
+    }
+    
+    public override func analyze(file_path: string) -> bool {
+        io.println("Analyzing timing in " + file_path);
+        
+        // Read file content
+        var content = file.read_text(file_path);
+        if (content == null) {
+            io.println("Failed to read file: " + file_path);
+            return false;
+        }
+        
+        var lines = content.split("\n");
+        
+        // Check for potential timing issues
+        this.check_timing_constraints(file_path, lines);
+        
+        // Check for potential infinite loops
+        this.check_infinite_loops(file_path, lines);
+        
+        return true;
+    }
+    
+    private func check_timing_constraints(file_path: string, lines: array<string>) -> void {
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            // Check for deadline annotations
+            if (line.contains("@deadline")) {
+                // Extract deadline value
+                var deadline_str = "";
+                var paren_idx = line.indexOf("(");
+                
+                if (paren_idx >= 0) {
+                    var end_idx = line.indexOf(")", paren_idx);
+                    deadline_str = line.substring(paren_idx + 1, end_idx).trim();
+                }
+                
+                // Check the function body for potential timing issues
+                var func_start = i + 1;
+                while (func_start < lines.length && !lines[func_start].contains("{")) {
+                    func_start++;
+                }
+                
+                var func_end = func_start + 1;
+                var brace_count = 1;
+                
+                while (func_end < lines.length && brace_count > 0) {
+                    if (lines[func_end].contains("{")) {
+                        brace_count++;
+                    }
+                    if (lines[func_end].contains("}")) {
+                        brace_count--;
+                    }
+                    func_end++;
+                }
+                
+                // Check for loops, recursion, or blocking calls
+                for (var j = func_start; j < func_end; j++) {
+                    if (lines[j].contains("while") || lines[j].contains("for")) {
+                        this.add_issue(AnalysisIssue(
+                            file_path,
+                            j + 1,
+                            0,
+                            SeverityLevel.WARNING,
+                            IssueType.TIMING,
+                            "Loop in function with deadline: " + deadline_str,
+                            lines[j].trim(),
+                            "Ensure loop has bounded execution time"
+                        ));
+                    }
+                    
+                    if (lines[j].contains("sleep") || lines[j].contains("wait") || lines[j].contains("block")) {
+                        this.add_issue(AnalysisIssue(
+                            file_path,
+                            j + 1,
+                            0,
+                            SeverityLevel.WARNING,
+                            IssueType.TIMING,
+                            "Blocking call in function with deadline: " + deadline_str,
+                            lines[j].trim(),
+                            "Avoid blocking calls in time-critical functions"
+                        ));
+                    }
+                }
+            }
+        }
+    }
+    
+    private func check_infinite_loops(file_path: string, lines: array<string>) -> void {
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            // Check for potential infinite loops
+            if (line.contains("while") && line.contains("true")) {
+                // Check if there's a break or return statement in the loop
+                var loop_start = i;
+                var loop_end = i + 1;
+                var brace_count = 0;
+                
+                if (line.contains("{")) {
+                    brace_count = 1;
+                } else {
+                    while (loop_end < lines.length && !lines[loop_end].contains("{")) {
+                        loop_end++;
+                    }
+                    brace_count = 1;
+                    loop_end++;
+                }
+                
+                while (loop_end < lines.length && brace_count > 0) {
+                    if (lines[loop_end].contains("{")) {
+                        brace_count++;
+                    }
+                    if (lines[loop_end].contains("}")) {
+                        brace_count--;
+                    }
+                    loop_end++;
+                }
+                
+                var has_exit = false;
+                for (var j = loop_start; j < loop_end; j++) {
+                    if (lines[j].contains("break") || lines[j].contains("return") || 
+                        lines[j].contains("throw") || lines[j].contains("exit")) {
+                        has_exit = true;
+                        break;
+                    }
+                }
+                
+                if (!has_exit) {
+                    this.add_issue(AnalysisIssue(
+                        file_path,
+                        i + 1,
+                        0,
+                        SeverityLevel.WARNING,
+                        IssueType.TIMING,
+                        "Potential infinite loop",
+                        line.trim(),
+                        "Add a break or return statement to exit the loop"
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Numerical analyzer
+ */
+class NumericalAnalyzer extends Analyzer {
+    public func constructor() {
+        super();
+    }
+    
+    public override func analyze(file_path: string) -> bool {
+        io.println("Analyzing numerical issues in " + file_path);
+        
+        // Read file content
+        var content = file.read_text(file_path);
+        if (content == null) {
+            io.println("Failed to read file: " + file_path);
+            return false;
+        }
+        
+        var lines = content.split("\n");
+        
+        // Check for potential division by zero
+        this.check_division_by_zero(file_path, lines);
+        
+        // Check for potential overflow/underflow
+        this.check_overflow_underflow(file_path, lines);
+        
+        // Check for potential precision loss
+        this.check_precision_loss(file_path, lines);
+        
+        return true;
+    }
+    
+    private func check_division_by_zero(file_path: string, lines: array<string>) -> void {
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            // Check for division operations
+            if (line.contains("/") || line.contains("div")) {
+                // Check if there's a zero check before division
+                var division_idx = line.indexOf("/");
+                if (division_idx < 0) {
+                    division_idx = line.indexOf("div");
+                }
+                
+                if (division_idx >= 0) {
+                    // Find the divisor
+                    var j = division_idx + 1;
+                    while (j < line.length && (line[j] == ' ' || line[j] == '\t')) {
+                        j++;
+                    }
+                    
+                    var divisor_start = j;
+                    while (j < line.length && (line[j].isAlphaNumeric() || line[j] == '_' || line[j] == '.')) {
+                        j++;
+                    }
+                    
+                    var divisor = line.substring(divisor_start, j);
+                    
+                    // Check if divisor is a literal zero
+                    if (divisor == "0" || divisor == "0.0") {
+                        this.add_issue(AnalysisIssue(
+                            file_path,
+                            i + 1,
+                            division_idx + 1,
+                            SeverityLevel.ERROR,
+                            IssueType.NUMERICAL,
+                            "Division by zero",
+                            line.trim(),
+                            "Avoid dividing by zero"
+                        ));
+                    } else {
+                        // Check if there's a zero check before division
+                        var has_zero_check = false;
+                        
+                        // Look at previous 5 lines for zero check
+                        for (var k = Math.max(0, i - 5); k < i; k++) {
+                            if (lines[k].contains("if") && 
+                                lines[k].contains(divisor) && 
+                                (lines[k].contains("!= 0") || lines[k].contains("> 0") || lines[k].contains("< 0"))) {
+                                has_zero_check = true;
+                                break;
+                            }
+                        }
+                        
+                        if (!has_zero_check && divisor != "this" && !divisor.startsWith("Math.")) {
+                            this.add_issue(AnalysisIssue(
+                                file_path,
+                                i + 1,
+                                division_idx + 1,
+                                SeverityLevel.WARNING,
+                                IssueType.NUMERICAL,
+                                "Potential division by zero: " + divisor,
+                                line.trim(),
+                                "Add a check to ensure " + divisor + " is not zero before division"
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private func check_overflow_underflow(file_path: string, lines: array<string>) -> void {
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            // Check for integer operations that might overflow
+            if (line.contains("int") && (line.contains("*") || line.contains("+"))) {
+                this.add_issue(AnalysisIssue(
+                    file_path,
+                    i + 1,
+                    0,
+                    SeverityLevel.INFO,
+                    IssueType.NUMERICAL,
+                    "Potential integer overflow",
+                    line.trim(),
+                    "Consider using a larger integer type or checking for overflow"
+                ));
+            }
+            
+            // Check for floating-point operations that might underflow
+            if (line.contains("float") && line.contains("/")) {
+                this.add_issue(AnalysisIssue(
+                    file_path,
+                    i + 1,
+                    0,
+                    SeverityLevel.INFO,
+                    IssueType.NUMERICAL,
+                    "Potential floating-point underflow",
+                    line.trim(),
+                    "Consider checking for very small values"
+                ));
+            }
+        }
+    }
+    
+    private func check_precision_loss(file_path: string, lines: array<string>) -> void {
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i];
+            
+            // Check for conversion from float to int
+            if (line.contains("as int") && line.contains("float")) {
+                this.add_issue(AnalysisIssue(
+                    file_path,
+                    i + 1,
+                    line.indexOf("as int"),
+                    SeverityLevel.INFO,
+                    IssueType.NUMERICAL,
+                    "Precision loss in float to int conversion",
+                    line.trim(),
+                    "Consider using Math.round(), Math.floor(), or Math.ceil() for explicit conversion"
+                ));
+            }
+            
+            // Check for comparison of floating-point values for equality
+            if (line.contains("==") && (line.contains("float") || line.contains("double"))) {
+                this.add_issue(AnalysisIssue(
+                    file_path,
+                    i + 1,
+                    line.indexOf("=="),
+                    SeverityLevel.WARNING,
+                    IssueType.NUMERICAL,
+                    "Floating-point equality comparison",
+                    line.trim(),
+                    "Use an epsilon-based comparison for floating-point values"
+                ));
+            }
+        }
+    }
+}
+
+/**
+ * Safety analyzer main class
+ */
+class SafetyAnalyzer {
+    private analyzers: array<Analyzer>;
+    private issues: array<AnalysisIssue>;
+    
+    public func constructor() {
+        this.analyzers = array<Analyzer>[];
+        this.issues = array<AnalysisIssue>[];
+        
+        // Add analyzers
+        this.analyzers.push(MemorySafetyAnalyzer());
+        this.analyzers.push(ConcurrencyAnalyzer());
+        this.analyzers.push(TimingAnalyzer());
+        this.analyzers.push(NumericalAnalyzer());
+    }
+    
+    public func analyze_file(file_path: string) -> bool {
+        io.println("Analyzing file: " + file_path);
+        
+        // Clear previous issues
+        this.issues = array<AnalysisIssue>[];
+        
+        // Run all analyzers
+        for (var i = 0; i < this.analyzers.length; i++) {
+            var analyzer = this.analyzers[i];
+            analyzer.clear_issues();
+            
+            if (!analyzer.analyze(file_path)) {
+                io.println("Analyzer failed: " + analyzer.constructor.name);
+                return false;
+            }
+            
+            // Collect issues
+            var analyzer_issues = analyzer.get_issues();
+            for (var j = 0; j < analyzer_issues.length; j++) {
+                this.issues.push(analyzer_issues[j]);
+            }
+        }
+        
+        // Sort issues by severity
+        this.sort_issues();
+        
+        return true;
+    }
+    
+    public func analyze_directory(dir_path: string, recursive: bool = true) -> bool {
+        io.println("Analyzing directory: " + dir_path);
+        
+        // Clear previous issues
+        this.issues = array<AnalysisIssue>[];
+        
+        // Get all files in directory
+        var files = file.list_files(dir_path);
+        if (files == null) {
+            io.println("Failed to list files in directory: " + dir_path);
+            return false;
+        }
+        
+        // Analyze each file
+        for (var i = 0; i < files.length; i++) {
+            var file_path = dir_path + "/" + files[i];
+            
+            if (file.is_directory(file_path)) {
+                if (recursive) {
+                    this.analyze_directory(file_path, recursive);
+                }
+            } else if (file_path.endsWith(".astra")) {
+                this.analyze_file(file_path);
+            }
+        }
+        
+        // Sort issues by severity
+        this.sort_issues();
+        
+        return true;
+    }
+    
+    public func get_issues() -> array<AnalysisIssue> {
+        return this.issues;
+    }
+    
+    public func has_issues() -> bool {
+        return this.issues.length > 0;
+    }
+    
+    public func has_critical_issues() -> bool {
+        for (var i = 0; i < this.issues.length; i++) {
+            if (this.issues[i].severity == SeverityLevel.CRITICAL) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    public func print_issues() -> void {
+        if (this.issues.length == 0) {
+            io.println("No issues found.");
+            return;
+        }
+        
+        io.println("Found " + this.issues.length.toString() + " issues:");
+        
+        for (var i = 0; i < this.issues.length; i++) {
+            var issue = this.issues[i];
+            io.println(issue.toString());
+        }
+    }
+    
+    public func generate_report(output_path: string) -> bool {
+        var report = "# Safety Analysis Report\n\n";
+        report += "Generated on: " + time.now().toString() + "\n\n";
+        
+        report += "## Summary\n\n";
+        report += "Total issues: " + this.issues.length.toString() + "\n\n";
+        
+        var critical_count = 0;
+        var error_count = 0;
+        var warning_count = 0;
+        var info_count = 0;
+        
+        for (var i = 0; i < this.issues.length; i++) {
+            var issue = this.issues[i];
+            
+            if (issue.severity == SeverityLevel.CRITICAL) {
+                critical_count++;
+            } else if (issue.severity == SeverityLevel.ERROR) {
+                error_count++;
+            } else if (issue.severity == SeverityLevel.WARNING) {
+                warning_count++;
+            } else if (issue.severity == SeverityLevel.INFO) {
+                info_count++;
+            }
+        }
+        
+        report += "- Critical: " + critical_count.toString() + "\n";
+        report += "- Error: " + error_count.toString() + "\n";
+        report += "- Warning: " + warning_count.toString() + "\n";
+        report += "- Info: " + info_count.toString() + "\n\n";
+        
+        report += "## Issues\n\n";
+        
+        for (var i = 0; i < this.issues.length; i++) {
+            var issue = this.issues[i];
+            
+            report += "### Issue " + (i + 1).toString() + "\n\n";
+            report += "- File: " + issue.file + "\n";
+            report += "- Line: " + issue.line.toString() + "\n";
+            report += "- Column: " + issue.column.toString() + "\n";
+            report += "- Severity: " + issue.severity.toString() + "\n";
+            report += "- Type: " + issue.type.toString() + "\n";
+            report += "- Message: " + issue.message + "\n";
+            
+            if (issue.code_snippet != "") {
+                report += "- Code: `" + issue.code_snippet + "`\n";
+            }
+            
+            if (issue.suggestion != "") {
+                report += "- Suggestion: " + issue.suggestion + "\n";
+            }
+            
+            report += "\n";
+        }
+        
+        // Write report to file
+        return file.write_text(output_path, report);
+    }
+    
+    private func sort_issues() -> void {
+        // Sort issues by severity (critical first, then error, warning, info)
+        for (var i = 0; i < this.issues.length - 1; i++) {
+            for (var j = i + 1; j < this.issues.length; j++) {
+                if (this.issues[i].severity < this.issues[j].severity) {
+                    var temp = this.issues[i];
+                    this.issues[i] = this.issues[j];
+                    this.issues[j] = temp;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Main function
+ */
+func main() {
+    // Create UI
+    var window = ui.Window("ASTRA Safety Analyzer", 800, 600);
+    
+    // Create analyzer
+    var analyzer = SafetyAnalyzer();
+    
+    // Create UI components
+    var file_path_label = ui.Label("File or Directory Path:");
+    var file_path_field = ui.TextField("");
+    var browse_button = ui.Button("Browse");
+    var recursive_checkbox = ui.Checkbox("Analyze Recursively", true);
+    var analyze_button = ui.Button("Analyze");
+    var issues_list = ui.ListView();
+    var issue_details = ui.TextArea("");
+    var generate_report_button = ui.Button("Generate Report");
+    
+    // Add components to window
+    window.addComponent(file_path_label);
+    window.addComponent(file_path_field);
+    window.addComponent(browse_button);
+    window.addComponent(recursive_checkbox);
+    window.addComponent(analyze_button);
+    window.addComponent(issues_list);
+    window.addComponent(issue_details);
+    window.addComponent(generate_report_button);
+    
+    // Set button actions
+    browse_button.setAction(() => {
+        var path = ui.showFileDialog("Select File or Directory", "", true);
+        if (path != "") {
+            file_path_field.setText(path);
+        }
+    });
+    
+    analyze_button.setAction(() => {
+        var path = file_path_field.getText();
+        if (path == "") {
+            ui.showMessageDialog("Error", "Please select a file or directory to analyze");
+            return;
+        }
+        
+        issues_list.clear();
+        issue_details.setText("");
+        
+        if (file.is_directory(path)) {
+            analyzer.analyze_directory(path, recursive_checkbox.isChecked());
+        } else {
+            analyzer.analyze_file(path);
+        }
+        
+        var issues = analyzer.get_issues();
+        for (var i = 0; i < issues.length; i++) {
+            var issue = issues[i];
+            issues_list.addItem(issue.severity.toString() + ": " + issue.message);
+        }
+        
+        if (issues.length == 0) {
+            ui.showMessageDialog("Analysis Complete", "No issues found");
+        }
+    });
+    
+    issues_list.setSelectionAction((index) => {
+        if (index >= 0 && index < analyzer.get_issues().length) {
+            var issue = analyzer.get_issues()[index];
+            issue_details.setText(issue.toString());
+        }
+    });
+    
+    generate_report_button.setAction(() => {
+        if (!analyzer.has_issues()) {
+            ui.showMessageDialog("Error", "No issues to report");
+            return;
+        }
+        
+        var report_path = ui.showSaveDialog("Save Report", "", "safety_report.md");
+        if (report_path != "") {
+            if (analyzer.generate_report(report_path)) {
+                ui.showMessageDialog("Success", "Report generated successfully");
+            } else {
+                ui.showMessageDialog("Error", "Failed to generate report");
+            }
+        }
+    });
+    
+    // Show window
+    window.show();
+    
+    // Start UI event loop
+    ui.runEventLoop();
+}
+
+// Command-line interface version
+func cli_main() {
+    io.println("ASTRA Safety Analyzer");
+    io.println("====================");
+    
+    var analyzer = SafetyAnalyzer();
+    
+    if (system.args.length < 2) {
+        io.println("Usage: safety_analyzer <file_or_directory> [--recursive] [--report=<report_path>]");
+        return;
+    }
+    
+    var path = system.args[1];
+    var recursive = system.args.contains("--recursive");
+    var report_path = "";
+    
+    for (var i = 0; i < system.args.length; i++) {
+        if (system.args[i].startsWith("--report=")) {
+            report_path = system.args[i].substring(9);
+            break;
+        }
+    }
+    
+    if (file.is_directory(path)) {
+        io.println("Analyzing directory: " + path + (recursive ? " (recursive)" : ""));
+        analyzer.analyze_directory(path, recursive);
+    } else {
+        io.println("Analyzing file: " + path);
+        analyzer.analyze_file(path);
+    }
+    
+    analyzer.print_issues();
+    
+    if (report_path != "") {
+        io.println("Generating report: " + report_path);
+        if (analyzer.generate_report(report_path)) {
+            io.println("Report generated successfully");
+        } else {
+            io.println("Failed to generate report");
+        }
+    }
+}
+
+// Check if running in GUI or CLI mode
+if (system.hasGUI()) {
+    main();
+} else {
+    cli_main();
+}

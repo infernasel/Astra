@@ -1,0 +1,235 @@
+/**
+ * ASTRA Example: Spacecraft Attitude Control System
+ * 
+ * This example demonstrates a complete attitude control system for a spacecraft,
+ * including sensor fusion, control algorithms, and thruster management.
+ */
+
+import core.io;
+import core.time;
+import sensors.imu;
+import sensors.starTracker;
+import sensors.sunSensor;
+import control.pid;
+import control.attitude;
+import orbital.mechanics;
+import navigation.guidance;
+import quaternion;
+import vector;
+import matrix;
+
+// Configuration constants
+const CONTROL_FREQUENCY: float = 10.0;  // Hz
+const CONTROL_PERIOD: float = 1.0 / CONTROL_FREQUENCY;  // seconds
+const MAX_THRUSTER_FORCE: float = 10.0;  // Newtons
+const SPACECRAFT_MASS: float = 500.0;    // kg
+const SPACECRAFT_INERTIA: matrix3 = matrix3(
+    100.0, 0.0, 0.0,
+    0.0, 120.0, 0.0,
+    0.0, 0.0, 80.0
+);  // kg·m²
+
+/**
+ * Spacecraft class representing the main control system
+ */
+class Spacecraft {
+    // Sensors
+    private imu: IMU;
+    private starTracker: StarTracker;
+    private sunSensor: SunSensor;
+    
+    // State
+    private position: vector3;
+    private velocity: vector3;
+    private attitude: quaternion;
+    private angularVelocity: vector3;
+    
+    // Control
+    private attitudeController: AttitudeController;
+    private targetAttitude: quaternion;
+    
+    // Timing
+    private lastUpdateTime: float;
+    
+    /**
+     * Initialize the spacecraft systems
+     */
+    public func initialize() {
+        // Initialize sensors
+        this.imu = IMU(0.001, 0.0001, 0.0001);  // accel, gyro, mag accuracy
+        this.starTracker = StarTracker(0.001);   // accuracy in radians
+        this.sunSensor = SunSensor(0.01);        // accuracy in radians
+        
+        // Initialize state
+        this.position = vector3(0.0, 0.0, 0.0);
+        this.velocity = vector3(0.0, 0.0, 0.0);
+        this.attitude = quaternion.identity();
+        this.angularVelocity = vector3(0.0, 0.0, 0.0);
+        
+        // Initialize controllers
+        this.attitudeController = AttitudeController(
+            PID(2.0, 0.1, 0.5),  // Roll controller
+            PID(2.0, 0.1, 0.5),  // Pitch controller
+            PID(2.0, 0.1, 0.5)   // Yaw controller
+        );
+        
+        // Set initial target attitude (pointing to Earth)
+        this.targetAttitude = quaternion.identity();
+        
+        // Initialize timing
+        this.lastUpdateTime = time.now();
+        
+        io.println("Spacecraft systems initialized");
+    }
+    
+    /**
+     * Update sensor readings
+     */
+    public func updateSensors() {
+        // In a real system, these would read from hardware
+        // Here we simulate sensor readings
+        
+        // Update IMU
+        this.imu.update(
+            this.position,
+            this.velocity,
+            this.attitude,
+            this.angularVelocity
+        );
+        
+        // Update star tracker
+        this.starTracker.update(this.attitude);
+        
+        // Update sun sensor
+        this.sunSensor.update(this.attitude);
+        
+        io.println("Sensors updated");
+    }
+    
+    /**
+     * Perform sensor fusion to get the best attitude estimate
+     */
+    @verify(return.magnitude() == 1.0, "Quaternion must be normalized")
+    public func estimateAttitude() -> quaternion {
+        // Get measurements from all sensors
+        var imuAttitude = this.imu.getOrientation();
+        var starTrackerAttitude = this.starTracker.getOrientation();
+        var sunSensorAttitude = this.sunSensor.getSunVector();
+        
+        // Perform sensor fusion using a weighted average
+        // In a real system, this would use a Kalman filter
+        var fusedAttitude = quaternion.slerp(
+            imuAttitude,
+            starTrackerAttitude,
+            0.5  // Weight factor
+        );
+        
+        // Normalize to ensure it's a valid quaternion
+        return fusedAttitude.normalize();
+    }
+    
+    /**
+     * Set the target attitude for the spacecraft
+     */
+    public func setTargetAttitude(target: quaternion) {
+        this.targetAttitude = target.normalize();
+        io.println("Target attitude set: " + this.targetAttitude.toString());
+    }
+    
+    /**
+     * Calculate control torques based on current and target attitude
+     */
+    public func calculateControlTorques() -> vector3 {
+        // Get current attitude estimate
+        var currentAttitude = this.estimateAttitude();
+        
+        // Calculate attitude error (difference between current and target)
+        var error = quaternion.difference(currentAttitude, this.targetAttitude);
+        
+        // Convert to axis-angle representation
+        var axis = error.getAxis();
+        var angle = error.getAngle();
+        
+        // Scale axis by angle to get error vector
+        var errorVector = axis.multiply(angle);
+        
+        // Get current angular velocity from IMU
+        var angularVelocity = this.imu.getAngularVelocity();
+        
+        // Update attitude controller with error and angular velocity
+        return this.attitudeController.update(errorVector, angularVelocity);
+    }
+    
+    /**
+     * Apply control torques using thrusters
+     */
+    @deadline(5ms)
+    public func applyControlTorques(torques: vector3) {
+        // In a real system, this would command actual thrusters
+        // Here we simulate the effect on the spacecraft
+        
+        // Calculate angular acceleration (torque = I * alpha)
+        var angularAcceleration = SPACECRAFT_INERTIA.inverse().multiply(torques);
+        
+        // Calculate time delta
+        var currentTime = time.now();
+        var dt = currentTime - this.lastUpdateTime;
+        this.lastUpdateTime = currentTime;
+        
+        // Update angular velocity (integrate acceleration)
+        this.angularVelocity = this.angularVelocity.add(angularAcceleration.multiply(dt));
+        
+        // Update attitude (integrate angular velocity)
+        var deltaRotation = quaternion.fromAxisAngle(
+            this.angularVelocity.normalize(),
+            this.angularVelocity.magnitude() * dt
+        );
+        this.attitude = this.attitude.multiply(deltaRotation).normalize();
+        
+        io.println("Applied control torques: " + torques.toString());
+        io.println("Current attitude: " + this.attitude.toString());
+    }
+    
+    /**
+     * Main control loop
+     */
+    public func run() {
+        io.println("Starting spacecraft control loop");
+        
+        while (true) {
+            // Update sensor readings
+            this.updateSensors();
+            
+            // Calculate control torques
+            var torques = this.calculateControlTorques();
+            
+            // Apply control torques
+            this.applyControlTorques(torques);
+            
+            // Wait for next control cycle
+            time.sleep(CONTROL_PERIOD);
+        }
+    }
+}
+
+/**
+ * Main function
+ */
+func main() {
+    io.println("Spacecraft Control System Starting");
+    
+    // Create and initialize spacecraft
+    var spacecraft = Spacecraft();
+    spacecraft.initialize();
+    
+    // Set target attitude (45-degree roll)
+    var targetAttitude = quaternion.fromEuler(
+        Math.radians(45.0),  // Roll
+        0.0,                 // Pitch
+        0.0                  // Yaw
+    );
+    spacecraft.setTargetAttitude(targetAttitude);
+    
+    // Run control loop
+    spacecraft.run();
+}

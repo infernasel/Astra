@@ -1,0 +1,1210 @@
+/**
+ * ASTRA Firmware Manager
+ * 
+ * A comprehensive tool for managing firmware on drones, spacecraft, and other aerospace systems.
+ * Features:
+ * - Firmware upload to various flight controllers
+ * - Device configuration and parameter management
+ * - Sensor calibration
+ * - System diagnostics
+ * - Firmware version management
+ */
+
+import core.io;
+import core.time;
+import core.system;
+import core.network;
+import core.crypto;
+import core.ui;
+import core.serial;
+import core.usb;
+import core.file;
+import vector;
+import matrix;
+
+// Supported device types
+enum DeviceType {
+    DRONE_MULTICOPTER,
+    DRONE_FIXED_WING,
+    ROCKET,
+    SATELLITE,
+    ROVER,
+    CUSTOM
+}
+
+// Supported flight controller types
+enum ControllerType {
+    PIXHAWK,
+    ARDUPILOT,
+    BETAFLIGHT,
+    INAV,
+    ASTRA_FC,
+    CUSTOM
+}
+
+// Firmware update status
+enum UpdateStatus {
+    IDLE,
+    DOWNLOADING,
+    VERIFYING,
+    FLASHING,
+    VERIFYING_FLASH,
+    REBOOTING,
+    COMPLETE,
+    FAILED
+}
+
+// Connection type
+enum ConnectionType {
+    USB,
+    SERIAL,
+    NETWORK,
+    BLUETOOTH
+}
+
+/**
+ * Device class representing a connected aerospace device
+ */
+class Device {
+    // Device properties
+    private name: string;
+    private type: DeviceType;
+    private controller: ControllerType;
+    private serialNumber: string;
+    private firmwareVersion: string;
+    private bootloaderVersion: string;
+    private connectionType: ConnectionType;
+    private connection: any;  // Connection object (USB, Serial, etc.)
+    private parameters: Map<string, any>;
+    private sensors: array<string>;
+    
+    /**
+     * Constructor
+     */
+    public func constructor(name: string, type: DeviceType, controller: ControllerType) {
+        this.name = name;
+        this.type = type;
+        this.controller = controller;
+        this.serialNumber = "";
+        this.firmwareVersion = "";
+        this.bootloaderVersion = "";
+        this.connectionType = ConnectionType.USB;
+        this.parameters = Map<string, any>();
+        this.sensors = array<string>[];
+    }
+    
+    /**
+     * Connect to the device
+     */
+    public func connect(connectionType: ConnectionType, port: string) -> bool {
+        this.connectionType = connectionType;
+        
+        // Connect based on connection type
+        if (connectionType == ConnectionType.USB) {
+            this.connection = usb.open(port);
+        } else if (connectionType == ConnectionType.SERIAL) {
+            this.connection = serial.open(port, 115200);
+        } else if (connectionType == ConnectionType.NETWORK) {
+            this.connection = network.connect(port, 5760);
+        } else if (connectionType == ConnectionType.BLUETOOTH) {
+            this.connection = bluetooth.connect(port);
+        }
+        
+        if (this.connection == null) {
+            io.println("Failed to connect to device on port: " + port);
+            return false;
+        }
+        
+        // Read device information
+        if (!this.readDeviceInfo()) {
+            io.println("Failed to read device information");
+            this.disconnect();
+            return false;
+        }
+        
+        io.println("Connected to " + this.name + " (" + this.serialNumber + ")");
+        io.println("Firmware: " + this.firmwareVersion);
+        io.println("Bootloader: " + this.bootloaderVersion);
+        
+        return true;
+    }
+    
+    /**
+     * Disconnect from the device
+     */
+    public func disconnect() -> bool {
+        if (this.connection == null) {
+            return true;
+        }
+        
+        // Disconnect based on connection type
+        if (this.connectionType == ConnectionType.USB) {
+            usb.close(this.connection);
+        } else if (this.connectionType == ConnectionType.SERIAL) {
+            serial.close(this.connection);
+        } else if (this.connectionType == ConnectionType.NETWORK) {
+            network.disconnect(this.connection);
+        } else if (this.connectionType == ConnectionType.BLUETOOTH) {
+            bluetooth.disconnect(this.connection);
+        }
+        
+        this.connection = null;
+        io.println("Disconnected from " + this.name);
+        
+        return true;
+    }
+    
+    /**
+     * Read device information
+     */
+    private func readDeviceInfo() -> bool {
+        // Send command to request device information
+        var command = this.createCommand("INFO");
+        if (!this.sendCommand(command)) {
+            return false;
+        }
+        
+        // Read response
+        var response = this.readResponse();
+        if (response == null) {
+            return false;
+        }
+        
+        // Parse device information
+        this.serialNumber = response.get("serial", "");
+        this.firmwareVersion = response.get("firmware", "");
+        this.bootloaderVersion = response.get("bootloader", "");
+        
+        // Read available sensors
+        command = this.createCommand("SENSORS");
+        if (!this.sendCommand(command)) {
+            return false;
+        }
+        
+        response = this.readResponse();
+        if (response == null) {
+            return false;
+        }
+        
+        this.sensors = response.get("sensors", array<string>[]);
+        
+        return true;
+    }
+    
+    /**
+     * Read all parameters from the device
+     */
+    public func readParameters() -> bool {
+        // Send command to request parameters
+        var command = this.createCommand("PARAM_LIST");
+        if (!this.sendCommand(command)) {
+            return false;
+        }
+        
+        // Read response
+        var response = this.readResponse();
+        if (response == null) {
+            return false;
+        }
+        
+        // Parse parameters
+        this.parameters = response.get("parameters", Map<string, any>());
+        
+        io.println("Read " + this.parameters.size().toString() + " parameters");
+        
+        return true;
+    }
+    
+    /**
+     * Write parameter to the device
+     */
+    public func writeParameter(name: string, value: any) -> bool {
+        // Send command to set parameter
+        var command = this.createCommand("PARAM_SET");
+        command.set("name", name);
+        command.set("value", value);
+        
+        if (!this.sendCommand(command)) {
+            return false;
+        }
+        
+        // Read response
+        var response = this.readResponse();
+        if (response == null) {
+            return false;
+        }
+        
+        // Check if parameter was set successfully
+        var result = response.get("result", false);
+        if (result) {
+            // Update local parameter cache
+            this.parameters.set(name, value);
+            io.println("Parameter " + name + " set to " + value.toString());
+        } else {
+            io.println("Failed to set parameter " + name);
+        }
+        
+        return result;
+    }
+    
+    /**
+     * Calibrate sensors
+     */
+    public func calibrateSensors(sensorType: string) -> bool {
+        // Check if sensor is available
+        var sensorFound = false;
+        for (var i = 0; i < this.sensors.length; i++) {
+            if (this.sensors[i] == sensorType) {
+                sensorFound = true;
+                break;
+            }
+        }
+        
+        if (!sensorFound) {
+            io.println("Sensor " + sensorType + " not available on this device");
+            return false;
+        }
+        
+        // Send command to start calibration
+        var command = this.createCommand("CALIBRATE");
+        command.set("sensor", sensorType);
+        
+        if (!this.sendCommand(command)) {
+            return false;
+        }
+        
+        io.println("Starting calibration of " + sensorType + "...");
+        
+        // Calibration process may require multiple steps
+        while (true) {
+            // Read response
+            var response = this.readResponse();
+            if (response == null) {
+                return false;
+            }
+            
+            // Check calibration status
+            var status = response.get("status", "");
+            var message = response.get("message", "");
+            
+            io.println(message);
+            
+            if (status == "IN_PROGRESS") {
+                // Wait for next instruction
+                continue;
+            } else if (status == "COMPLETE") {
+                // Calibration complete
+                io.println("Calibration of " + sensorType + " complete");
+                return true;
+            } else if (status == "FAILED") {
+                // Calibration failed
+                io.println("Calibration of " + sensorType + " failed");
+                return false;
+            } else if (status == "INSTRUCTION") {
+                // User instruction required
+                var instruction = response.get("instruction", "");
+                io.println("Instruction: " + instruction);
+                
+                // Wait for user to confirm
+                io.print("Press Enter when ready to continue...");
+                io.input();
+                
+                // Send confirmation
+                command = this.createCommand("CALIBRATE_CONTINUE");
+                if (!this.sendCommand(command)) {
+                    return false;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Update firmware
+     */
+    public func updateFirmware(firmwarePath: string) -> bool {
+        // Check if file exists
+        if (!file.exists(firmwarePath)) {
+            io.println("Firmware file not found: " + firmwarePath);
+            return false;
+        }
+        
+        // Read firmware file
+        var firmwareData = file.readBinary(firmwarePath);
+        if (firmwareData == null) {
+            io.println("Failed to read firmware file");
+            return false;
+        }
+        
+        // Calculate firmware hash
+        var firmwareHash = crypto.sha256(firmwareData);
+        
+        // Start update process
+        io.println("Starting firmware update...");
+        
+        // Enter bootloader mode
+        var command = this.createCommand("ENTER_BOOTLOADER");
+        if (!this.sendCommand(command)) {
+            io.println("Failed to enter bootloader mode");
+            return false;
+        }
+        
+        // Wait for device to reboot into bootloader
+        io.println("Waiting for device to enter bootloader mode...");
+        time.sleep(3.0);
+        
+        // Send firmware info
+        command = this.createCommand("FIRMWARE_BEGIN");
+        command.set("size", firmwareData.length);
+        command.set("hash", firmwareHash);
+        command.set("target", this.controller.toString());
+        
+        if (!this.sendCommand(command)) {
+            io.println("Failed to initiate firmware update");
+            return false;
+        }
+        
+        // Read response
+        var response = this.readResponse();
+        if (response == null) {
+            io.println("No response from device");
+            return false;
+        }
+        
+        // Check if device is ready to receive firmware
+        var ready = response.get("ready", false);
+        if (!ready) {
+            io.println("Device not ready to receive firmware");
+            return false;
+        }
+        
+        // Send firmware data in chunks
+        var chunkSize = 1024;
+        var totalChunks = Math.ceil(firmwareData.length / chunkSize);
+        var sentBytes = 0;
+        
+        for (var i = 0; i < totalChunks; i++) {
+            // Calculate chunk size (last chunk may be smaller)
+            var currentChunkSize = Math.min(chunkSize, firmwareData.length - sentBytes);
+            
+            // Extract chunk
+            var chunk = firmwareData.slice(sentBytes, sentBytes + currentChunkSize);
+            
+            // Send chunk
+            command = this.createCommand("FIRMWARE_CHUNK");
+            command.set("chunk_index", i);
+            command.set("chunk_size", currentChunkSize);
+            command.set("chunk_data", chunk);
+            
+            if (!this.sendCommand(command)) {
+                io.println("Failed to send firmware chunk " + i.toString());
+                return false;
+            }
+            
+            // Read response
+            response = this.readResponse();
+            if (response == null) {
+                io.println("No response from device after sending chunk " + i.toString());
+                return false;
+            }
+            
+            // Check if chunk was received successfully
+            var chunkOk = response.get("chunk_ok", false);
+            if (!chunkOk) {
+                io.println("Device reported error for chunk " + i.toString());
+                return false;
+            }
+            
+            // Update progress
+            sentBytes += currentChunkSize;
+            var progress = (sentBytes * 100) / firmwareData.length;
+            io.print("\rUploading firmware: " + progress.toString() + "% (" + sentBytes.toString() + "/" + firmwareData.length.toString() + " bytes)");
+        }
+        
+        io.println("\nFirmware upload complete");
+        
+        // Finalize firmware update
+        command = this.createCommand("FIRMWARE_END");
+        command.set("hash", firmwareHash);
+        
+        if (!this.sendCommand(command)) {
+            io.println("Failed to finalize firmware update");
+            return false;
+        }
+        
+        // Read response
+        response = this.readResponse();
+        if (response == null) {
+            io.println("No response from device after finalizing firmware update");
+            return false;
+        }
+        
+        // Check if firmware was installed successfully
+        var success = response.get("success", false);
+        if (!success) {
+            io.println("Device reported error during firmware installation");
+            return false;
+        }
+        
+        io.println("Firmware update successful");
+        io.println("Device is rebooting...");
+        
+        // Wait for device to reboot
+        time.sleep(5.0);
+        
+        // Reconnect to device
+        this.readDeviceInfo();
+        
+        io.println("Device reconnected");
+        io.println("New firmware version: " + this.firmwareVersion);
+        
+        return true;
+    }
+    
+    /**
+     * Create a command object
+     */
+    private func createCommand(commandType: string) -> Map<string, any> {
+        var command = Map<string, any>();
+        command.set("command", commandType);
+        command.set("timestamp", time.now().toUnixTimestamp());
+        return command;
+    }
+    
+    /**
+     * Send a command to the device
+     */
+    private func sendCommand(command: Map<string, any>) -> bool {
+        // Serialize command to JSON
+        var jsonCommand = json.stringify(command);
+        
+        // Send command based on connection type
+        if (this.connectionType == ConnectionType.USB || this.connectionType == ConnectionType.SERIAL) {
+            return serial.write(this.connection, jsonCommand + "\n");
+        } else if (this.connectionType == ConnectionType.NETWORK) {
+            return network.send(this.connection, jsonCommand + "\n");
+        } else if (this.connectionType == ConnectionType.BLUETOOTH) {
+            return bluetooth.send(this.connection, jsonCommand + "\n");
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Read a response from the device
+     */
+    private func readResponse() -> Map<string, any>? {
+        // Read response based on connection type
+        var jsonResponse = "";
+        
+        if (this.connectionType == ConnectionType.USB || this.connectionType == ConnectionType.SERIAL) {
+            jsonResponse = serial.readLine(this.connection, 5000);  // 5 second timeout
+        } else if (this.connectionType == ConnectionType.NETWORK) {
+            jsonResponse = network.receive(this.connection, 5000);
+        } else if (this.connectionType == ConnectionType.BLUETOOTH) {
+            jsonResponse = bluetooth.receive(this.connection, 5000);
+        }
+        
+        if (jsonResponse == null || jsonResponse == "") {
+            return null;
+        }
+        
+        // Parse JSON response
+        return json.parse(jsonResponse);
+    }
+    
+    /**
+     * Get device name
+     */
+    public func getName() -> string {
+        return this.name;
+    }
+    
+    /**
+     * Get device type
+     */
+    public func getType() -> DeviceType {
+        return this.type;
+    }
+    
+    /**
+     * Get controller type
+     */
+    public func getController() -> ControllerType {
+        return this.controller;
+    }
+    
+    /**
+     * Get serial number
+     */
+    public func getSerialNumber() -> string {
+        return this.serialNumber;
+    }
+    
+    /**
+     * Get firmware version
+     */
+    public func getFirmwareVersion() -> string {
+        return this.firmwareVersion;
+    }
+    
+    /**
+     * Get bootloader version
+     */
+    public func getBootloaderVersion() -> string {
+        return this.bootloaderVersion;
+    }
+    
+    /**
+     * Get parameters
+     */
+    public func getParameters() -> Map<string, any> {
+        return this.parameters;
+    }
+    
+    /**
+     * Get sensors
+     */
+    public func getSensors() -> array<string> {
+        return this.sensors;
+    }
+}
+
+/**
+ * Firmware Manager class
+ */
+class FirmwareManager {
+    // Available devices
+    private devices: array<Device>;
+    private activeDevice: Device?;
+    private firmwareRepository: string;
+    
+    /**
+     * Constructor
+     */
+    public func constructor() {
+        this.devices = array<Device>[];
+        this.activeDevice = null;
+        this.firmwareRepository = "https://firmware.astra-lang.org/repository";
+    }
+    
+    /**
+     * Scan for connected devices
+     */
+    public func scanDevices() -> array<Device> {
+        io.println("Scanning for connected devices...");
+        
+        // Clear existing devices
+        this.devices = array<Device>[];
+        
+        // Scan USB ports
+        var usbPorts = usb.listPorts();
+        for (var i = 0; i < usbPorts.length; i++) {
+            var port = usbPorts[i];
+            io.println("Found USB port: " + port);
+            
+            // Try to identify device
+            var device = this.identifyDevice(ConnectionType.USB, port);
+            if (device != null) {
+                this.devices.push(device);
+            }
+        }
+        
+        // Scan serial ports
+        var serialPorts = serial.listPorts();
+        for (var i = 0; i < serialPorts.length; i++) {
+            var port = serialPorts[i];
+            io.println("Found serial port: " + port);
+            
+            // Try to identify device
+            var device = this.identifyDevice(ConnectionType.SERIAL, port);
+            if (device != null) {
+                this.devices.push(device);
+            }
+        }
+        
+        io.println("Found " + this.devices.length.toString() + " devices");
+        
+        return this.devices;
+    }
+    
+    /**
+     * Identify a device on a specific port
+     */
+    private func identifyDevice(connectionType: ConnectionType, port: string) -> Device? {
+        // Create a generic device
+        var device = Device("Unknown", DeviceType.CUSTOM, ControllerType.CUSTOM);
+        
+        // Try to connect to the device
+        if (!device.connect(connectionType, port)) {
+            return null;
+        }
+        
+        // Device connected successfully
+        return device;
+    }
+    
+    /**
+     * Connect to a specific device
+     */
+    public func connectDevice(index: int) -> bool {
+        if (index < 0 || index >= this.devices.length) {
+            io.println("Invalid device index");
+            return false;
+        }
+        
+        this.activeDevice = this.devices[index];
+        io.println("Connected to " + this.activeDevice.getName());
+        
+        return true;
+    }
+    
+    /**
+     * Disconnect from the active device
+     */
+    public func disconnectDevice() -> bool {
+        if (this.activeDevice == null) {
+            io.println("No active device");
+            return false;
+        }
+        
+        var result = this.activeDevice.disconnect();
+        this.activeDevice = null;
+        
+        return result;
+    }
+    
+    /**
+     * Get available firmware versions for the active device
+     */
+    public func getAvailableFirmware() -> array<string> {
+        if (this.activeDevice == null) {
+            io.println("No active device");
+            return array<string>[];
+        }
+        
+        // Get device type and controller type
+        var deviceType = this.activeDevice.getType();
+        var controllerType = this.activeDevice.getController();
+        
+        // Construct URL for firmware repository
+        var url = this.firmwareRepository + "/" + 
+                 deviceType.toString() + "/" + 
+                 controllerType.toString() + "/index.json";
+        
+        // Download firmware index
+        var response = network.httpGet(url);
+        if (response.statusCode != 200) {
+            io.println("Failed to download firmware index: " + response.statusCode.toString());
+            return array<string>[];
+        }
+        
+        // Parse firmware index
+        var firmwareIndex = json.parse(response.body);
+        var versions = firmwareIndex.get("versions", array<string>[]);
+        
+        io.println("Available firmware versions:");
+        for (var i = 0; i < versions.length; i++) {
+            io.println((i + 1).toString() + ". " + versions[i]);
+        }
+        
+        return versions;
+    }
+    
+    /**
+     * Download firmware
+     */
+    public func downloadFirmware(version: string) -> string {
+        if (this.activeDevice == null) {
+            io.println("No active device");
+            return "";
+        }
+        
+        // Get device type and controller type
+        var deviceType = this.activeDevice.getType();
+        var controllerType = this.activeDevice.getController();
+        
+        // Construct URL for firmware file
+        var url = this.firmwareRepository + "/" + 
+                 deviceType.toString() + "/" + 
+                 controllerType.toString() + "/" + 
+                 version + "/firmware.bin";
+        
+        // Create local filename
+        var localPath = system.getTempDirectory() + "/firmware_" + 
+                       deviceType.toString() + "_" + 
+                       controllerType.toString() + "_" + 
+                       version + ".bin";
+        
+        io.println("Downloading firmware from " + url);
+        io.println("Saving to " + localPath);
+        
+        // Download firmware file
+        var response = network.httpGet(url);
+        if (response.statusCode != 200) {
+            io.println("Failed to download firmware: " + response.statusCode.toString());
+            return "";
+        }
+        
+        // Save firmware file
+        if (!file.writeBinary(localPath, response.body)) {
+            io.println("Failed to save firmware file");
+            return "";
+        }
+        
+        io.println("Firmware downloaded successfully");
+        
+        return localPath;
+    }
+    
+    /**
+     * Update firmware on the active device
+     */
+    public func updateFirmware(version: string) -> bool {
+        if (this.activeDevice == null) {
+            io.println("No active device");
+            return false;
+        }
+        
+        // Download firmware
+        var firmwarePath = this.downloadFirmware(version);
+        if (firmwarePath == "") {
+            return false;
+        }
+        
+        // Update firmware
+        return this.activeDevice.updateFirmware(firmwarePath);
+    }
+    
+    /**
+     * Read parameters from the active device
+     */
+    public func readParameters() -> bool {
+        if (this.activeDevice == null) {
+            io.println("No active device");
+            return false;
+        }
+        
+        return this.activeDevice.readParameters();
+    }
+    
+    /**
+     * Write parameter to the active device
+     */
+    public func writeParameter(name: string, value: any) -> bool {
+        if (this.activeDevice == null) {
+            io.println("No active device");
+            return false;
+        }
+        
+        return this.activeDevice.writeParameter(name, value);
+    }
+    
+    /**
+     * Calibrate sensors on the active device
+     */
+    public func calibrateSensors(sensorType: string) -> bool {
+        if (this.activeDevice == null) {
+            io.println("No active device");
+            return false;
+        }
+        
+        return this.activeDevice.calibrateSensors(sensorType);
+    }
+    
+    /**
+     * Get active device
+     */
+    public func getActiveDevice() -> Device? {
+        return this.activeDevice;
+    }
+    
+    /**
+     * Get all devices
+     */
+    public func getDevices() -> array<Device> {
+        return this.devices;
+    }
+}
+
+/**
+ * Main function
+ */
+func main() {
+    // Create UI
+    var window = ui.Window("ASTRA Firmware Manager", 800, 600);
+    
+    // Create firmware manager
+    var manager = FirmwareManager();
+    
+    // Create UI components
+    var deviceList = ui.ListView();
+    var connectButton = ui.Button("Connect");
+    var disconnectButton = ui.Button("Disconnect");
+    var scanButton = ui.Button("Scan Devices");
+    var updateButton = ui.Button("Update Firmware");
+    var calibrateButton = ui.Button("Calibrate Sensors");
+    var parametersButton = ui.Button("Parameters");
+    
+    // Add components to window
+    window.addComponent(deviceList);
+    window.addComponent(connectButton);
+    window.addComponent(disconnectButton);
+    window.addComponent(scanButton);
+    window.addComponent(updateButton);
+    window.addComponent(calibrateButton);
+    window.addComponent(parametersButton);
+    
+    // Set button actions
+    scanButton.setAction(() => {
+        var devices = manager.scanDevices();
+        deviceList.clear();
+        
+        for (var i = 0; i < devices.length; i++) {
+            var device = devices[i];
+            deviceList.addItem(device.getName() + " (" + device.getSerialNumber() + ")");
+        }
+    });
+    
+    connectButton.setAction(() => {
+        var selectedIndex = deviceList.getSelectedIndex();
+        if (selectedIndex >= 0) {
+            manager.connectDevice(selectedIndex);
+        }
+    });
+    
+    disconnectButton.setAction(() => {
+        manager.disconnectDevice();
+    });
+    
+    updateButton.setAction(() => {
+        var device = manager.getActiveDevice();
+        if (device != null) {
+            var versions = manager.getAvailableFirmware();
+            if (versions.length > 0) {
+                var versionDialog = ui.Dialog("Select Firmware Version");
+                var versionList = ui.ListView();
+                
+                for (var i = 0; i < versions.length; i++) {
+                    versionList.addItem(versions[i]);
+                }
+                
+                versionDialog.addComponent(versionList);
+                versionDialog.addButton("Update", () => {
+                    var selectedVersion = versions[versionList.getSelectedIndex()];
+                    manager.updateFirmware(selectedVersion);
+                    versionDialog.close();
+                });
+                
+                versionDialog.addButton("Cancel", () => {
+                    versionDialog.close();
+                });
+                
+                versionDialog.show();
+            }
+        }
+    });
+    
+    calibrateButton.setAction(() => {
+        var device = manager.getActiveDevice();
+        if (device != null) {
+            var sensors = device.getSensors();
+            if (sensors.length > 0) {
+                var sensorDialog = ui.Dialog("Select Sensor to Calibrate");
+                var sensorList = ui.ListView();
+                
+                for (var i = 0; i < sensors.length; i++) {
+                    sensorList.addItem(sensors[i]);
+                }
+                
+                sensorDialog.addComponent(sensorList);
+                sensorDialog.addButton("Calibrate", () => {
+                    var selectedSensor = sensors[sensorList.getSelectedIndex()];
+                    manager.calibrateSensors(selectedSensor);
+                    sensorDialog.close();
+                });
+                
+                sensorDialog.addButton("Cancel", () => {
+                    sensorDialog.close();
+                });
+                
+                sensorDialog.show();
+            }
+        }
+    });
+    
+    parametersButton.setAction(() => {
+        var device = manager.getActiveDevice();
+        if (device != null) {
+            manager.readParameters();
+            var parameters = device.getParameters();
+            
+            var paramDialog = ui.Dialog("Device Parameters");
+            var paramTable = ui.Table(["Parameter", "Value"]);
+            
+            var paramNames = parameters.keys();
+            for (var i = 0; i < paramNames.length; i++) {
+                var name = paramNames[i];
+                var value = parameters.get(name, "");
+                paramTable.addRow([name, value.toString()]);
+            }
+            
+            paramDialog.addComponent(paramTable);
+            paramDialog.addButton("Edit", () => {
+                var selectedRow = paramTable.getSelectedRow();
+                if (selectedRow >= 0) {
+                    var name = paramNames[selectedRow];
+                    var value = parameters.get(name, "");
+                    
+                    var editDialog = ui.Dialog("Edit Parameter");
+                    var nameLabel = ui.Label("Parameter: " + name);
+                    var valueField = ui.TextField(value.toString());
+                    
+                    editDialog.addComponent(nameLabel);
+                    editDialog.addComponent(valueField);
+                    
+                    editDialog.addButton("Save", () => {
+                        var newValue = valueField.getText();
+                        manager.writeParameter(name, newValue);
+                        editDialog.close();
+                        paramDialog.close();
+                    });
+                    
+                    editDialog.addButton("Cancel", () => {
+                        editDialog.close();
+                    });
+                    
+                    editDialog.show();
+                }
+            });
+            
+            paramDialog.addButton("Close", () => {
+                paramDialog.close();
+            });
+            
+            paramDialog.show();
+        }
+    });
+    
+    // Show window
+    window.show();
+    
+    // Start UI event loop
+    ui.runEventLoop();
+}
+
+// Command-line interface version
+func cli_main() {
+    io.println("ASTRA Firmware Manager");
+    io.println("======================");
+    
+    var manager = FirmwareManager();
+    
+    while (true) {
+        io.println("\nMain Menu:");
+        io.println("1. Scan for devices");
+        io.println("2. Connect to device");
+        io.println("3. Disconnect from device");
+        io.println("4. Update firmware");
+        io.println("5. Calibrate sensors");
+        io.println("6. Manage parameters");
+        io.println("7. Exit");
+        
+        io.print("\nEnter choice: ");
+        var choice = io.input();
+        
+        if (choice == "1") {
+            // Scan for devices
+            var devices = manager.scanDevices();
+            
+            if (devices.length == 0) {
+                io.println("No devices found");
+            } else {
+                io.println("\nAvailable devices:");
+                for (var i = 0; i < devices.length; i++) {
+                    var device = devices[i];
+                    io.println((i + 1).toString() + ". " + device.getName() + 
+                              " (" + device.getSerialNumber() + ")");
+                }
+            }
+        } else if (choice == "2") {
+            // Connect to device
+            var devices = manager.getDevices();
+            
+            if (devices.length == 0) {
+                io.println("No devices available. Scan for devices first.");
+                continue;
+            }
+            
+            io.println("\nAvailable devices:");
+            for (var i = 0; i < devices.length; i++) {
+                var device = devices[i];
+                io.println((i + 1).toString() + ". " + device.getName() + 
+                          " (" + device.getSerialNumber() + ")");
+            }
+            
+            io.print("\nEnter device number: ");
+            var deviceIndex = io.input();
+            
+            try {
+                var index = parseInt(deviceIndex) - 1;
+                if (index >= 0 && index < devices.length) {
+                    manager.connectDevice(index);
+                } else {
+                    io.println("Invalid device number");
+                }
+            } catch (e) {
+                io.println("Invalid input");
+            }
+        } else if (choice == "3") {
+            // Disconnect from device
+            manager.disconnectDevice();
+        } else if (choice == "4") {
+            // Update firmware
+            var device = manager.getActiveDevice();
+            if (device == null) {
+                io.println("No active device. Connect to a device first.");
+                continue;
+            }
+            
+            var versions = manager.getAvailableFirmware();
+            if (versions.length == 0) {
+                io.println("No firmware versions available for this device");
+                continue;
+            }
+            
+            io.println("\nAvailable firmware versions:");
+            for (var i = 0; i < versions.length; i++) {
+                io.println((i + 1).toString() + ". " + versions[i]);
+            }
+            
+            io.print("\nEnter version number: ");
+            var versionIndex = io.input();
+            
+            try {
+                var index = parseInt(versionIndex) - 1;
+                if (index >= 0 && index < versions.length) {
+                    var version = versions[index];
+                    manager.updateFirmware(version);
+                } else {
+                    io.println("Invalid version number");
+                }
+            } catch (e) {
+                io.println("Invalid input");
+            }
+        } else if (choice == "5") {
+            // Calibrate sensors
+            var device = manager.getActiveDevice();
+            if (device == null) {
+                io.println("No active device. Connect to a device first.");
+                continue;
+            }
+            
+            var sensors = device.getSensors();
+            if (sensors.length == 0) {
+                io.println("No sensors available for this device");
+                continue;
+            }
+            
+            io.println("\nAvailable sensors:");
+            for (var i = 0; i < sensors.length; i++) {
+                io.println((i + 1).toString() + ". " + sensors[i]);
+            }
+            
+            io.print("\nEnter sensor number: ");
+            var sensorIndex = io.input();
+            
+            try {
+                var index = parseInt(sensorIndex) - 1;
+                if (index >= 0 && index < sensors.length) {
+                    var sensor = sensors[index];
+                    manager.calibrateSensors(sensor);
+                } else {
+                    io.println("Invalid sensor number");
+                }
+            } catch (e) {
+                io.println("Invalid input");
+            }
+        } else if (choice == "6") {
+            // Manage parameters
+            var device = manager.getActiveDevice();
+            if (device == null) {
+                io.println("No active device. Connect to a device first.");
+                continue;
+            }
+            
+            manager.readParameters();
+            var parameters = device.getParameters();
+            var paramNames = parameters.keys();
+            
+            while (true) {
+                io.println("\nParameter Management:");
+                io.println("1. List parameters");
+                io.println("2. Edit parameter");
+                io.println("3. Back to main menu");
+                
+                io.print("\nEnter choice: ");
+                var paramChoice = io.input();
+                
+                if (paramChoice == "1") {
+                    // List parameters
+                    io.println("\nDevice parameters:");
+                    for (var i = 0; i < paramNames.length; i++) {
+                        var name = paramNames[i];
+                        var value = parameters.get(name, "");
+                        io.println((i + 1).toString() + ". " + name + " = " + value.toString());
+                    }
+                } else if (paramChoice == "2") {
+                    // Edit parameter
+                    io.println("\nDevice parameters:");
+                    for (var i = 0; i < paramNames.length; i++) {
+                        var name = paramNames[i];
+                        var value = parameters.get(name, "");
+                        io.println((i + 1).toString() + ". " + name + " = " + value.toString());
+                    }
+                    
+                    io.print("\nEnter parameter number: ");
+                    var paramIndex = io.input();
+                    
+                    try {
+                        var index = parseInt(paramIndex) - 1;
+                        if (index >= 0 && index < paramNames.length) {
+                            var name = paramNames[index];
+                            var value = parameters.get(name, "");
+                            
+                            io.println("Parameter: " + name);
+                            io.println("Current value: " + value.toString());
+                            io.print("Enter new value: ");
+                            var newValue = io.input();
+                            
+                            manager.writeParameter(name, newValue);
+                        } else {
+                            io.println("Invalid parameter number");
+                        }
+                    } catch (e) {
+                        io.println("Invalid input");
+                    }
+                } else if (paramChoice == "3") {
+                    // Back to main menu
+                    break;
+                } else {
+                    io.println("Invalid choice");
+                }
+            }
+        } else if (choice == "7") {
+            // Exit
+            io.println("Exiting...");
+            break;
+        } else {
+            io.println("Invalid choice");
+        }
+    }
+}
+
+// Check if running in GUI or CLI mode
+if (system.hasGUI()) {
+    main();
+} else {
+    cli_main();
+}

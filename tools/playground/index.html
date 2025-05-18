@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASTRA Language Playground</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/dracula.min.css">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+            padding: 20px;
+        }
+        .navbar-brand {
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        .code-container {
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .CodeMirror {
+            height: 500px;
+            font-family: 'Fira Code', monospace;
+            font-size: 14px;
+        }
+        .output-container {
+            background-color: #282a36;
+            color: #f8f8f2;
+            border-radius: 5px;
+            padding: 15px;
+            height: 200px;
+            overflow-y: auto;
+            font-family: 'Fira Code', monospace;
+            font-size: 14px;
+        }
+        .btn-run {
+            background-color: #50fa7b;
+            color: #282a36;
+            font-weight: bold;
+        }
+        .btn-run:hover {
+            background-color: #5af78e;
+            color: #282a36;
+        }
+        .btn-clear {
+            background-color: #ff5555;
+            color: white;
+            font-weight: bold;
+        }
+        .btn-clear:hover {
+            background-color: #ff6e6e;
+            color: white;
+        }
+        .examples-dropdown {
+            margin-right: 10px;
+        }
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="#">
+                <span style="color: #50fa7b;">ASTRA</span> Language Playground
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#helpModal">Help</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#aboutModal">About</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Code Editor</h5>
+                        <div>
+                            <div class="dropdown examples-dropdown d-inline-block">
+                                <button class="btn btn-secondary dropdown-toggle" type="button" id="examplesDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                                    Examples
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="examplesDropdown">
+                                    <li><a class="dropdown-item" href="#" onclick="loadExample('hello')">Hello World</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="loadExample('orbit')">Orbit Calculation</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="loadExample('drone')">Drone Navigation</a></li>
+                                    <li><a class="dropdown-item" href="#" onclick="loadExample('vectors')">Vector Operations</a></li>
+                                </ul>
+                            </div>
+                            <button class="btn btn-run" onclick="runCode()">Run</button>
+                            <button class="btn btn-clear" onclick="clearOutput()">Clear Output</button>
+                        </div>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="code-container">
+                            <textarea id="code-editor"></textarea>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Output</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="output-container" id="output">
+                            // Output will appear here
+                        </div>
+                    </div>
+                </div>
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">Visualization</h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="visualization" style="height: 250px; background-color: #282a36; border-radius: 5px; display: flex; align-items: center; justify-content: center; color: #f8f8f2;">
+                            Visualization will appear here
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>ASTRA Programming Language - Designed for Spacecraft and UAV Control</p>
+    </div>
+
+    <!-- Help Modal -->
+    <div class="modal fade" id="helpModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">ASTRA Language Help</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <h4>Basic Syntax</h4>
+                    <pre><code>// Variables
+var name: type = value;
+const MAX_VALUE: int = 100;
+
+// Functions
+func name(param1: type, param2: type) -> return_type {
+    // Function body
+    return value;
+}
+
+// Control structures
+if condition {
+    // code
+} else {
+    // code
+}
+
+for i in 0..10 {
+    // code
+}
+
+while condition {
+    // code
+}
+
+// Modules
+module name {
+    // Module contents
+}
+
+// Importing
+import module.name;
+</code></pre>
+
+                    <h4>Specialized Types</h4>
+                    <pre><code>// Vectors
+var position: vector3 = vector3(x, y, z);
+
+// Quaternions for rotation
+var rotation: quaternion = quaternion.from_euler(roll, pitch, yaw);
+
+// Trajectories
+var path: trajectory = trajectory.from_waypoints(waypoints);
+</code></pre>
+
+                    <h4>Safety Features</h4>
+                    <pre><code>// Range-checked variables
+var altitude: float<0.0..100000.0>;
+
+// Verification annotations
+@verify(altitude > 0.0, "Altitude must be positive")
+func adjust_orbit(altitude: float) {
+    // Function implementation
+}
+
+// Real-time constraints
+@deadline(5ms)
+func emergency_stop() {
+    // Must complete within 5 milliseconds
+}
+</code></pre>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- About Modal -->
+    <div class="modal fade" id="aboutModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">About ASTRA</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p>ASTRA is a specialized programming language designed for spacecraft and UAV control systems. It provides high-level abstractions for aerospace operations while ensuring safety and reliability.</p>
+                    
+                    <p>Key features:</p>
+                    <ul>
+                        <li>Strong type system with aerospace-specific types</li>
+                        <li>Built-in safety features and formal verification</li>
+                        <li>Real-time programming capabilities</li>
+                        <li>Specialized libraries for orbital mechanics, navigation, and control</li>
+                        <li>Efficient compilation for resource-constrained environments</li>
+                    </ul>
+                    
+                    <p>This playground provides a simulated environment to experiment with ASTRA code without needing to install the full development environment.</p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/javascript/javascript.min.js"></script>
+    <script>
+        // Initialize CodeMirror
+        const editor = CodeMirror.fromTextArea(document.getElementById("code-editor"), {
+            lineNumbers: true,
+            mode: "javascript", // We'll use JavaScript mode as a base
+            theme: "dracula",
+            indentUnit: 4,
+            smartIndent: true,
+            tabSize: 4,
+            indentWithTabs: false,
+            lineWrapping: false,
+            autoCloseBrackets: true,
+            matchBrackets: true,
+            extraKeys: {
+                "Ctrl-Space": "autocomplete",
+                "Tab": function(cm) {
+                    if (cm.somethingSelected()) {
+                        cm.indentSelection("add");
+                    } else {
+                        cm.replaceSelection("    ", "end", "+input");
+                    }
+                }
+            }
+        });
+
+        // Set initial code
+        editor.setValue(`// Welcome to ASTRA Language Playground
+// Try running this simple example
+
+import core.io;
+
+func main() {
+    io.println("Hello, ASTRA!");
+    
+    var position = vector3(1.0, 2.0, 3.0);
+    var velocity = vector3(0.1, 0.2, 0.3);
+    
+    io.println("Position: " + position.to_string());
+    io.println("Velocity: " + velocity.to_string());
+    io.println("Speed: " + velocity.magnitude().to_string() + " m/s");
+}
+`);
+
+        // Function to run code
+        function runCode() {
+            const code = editor.getValue();
+            const output = document.getElementById("output");
+            
+            // Clear previous output
+            output.innerHTML = "";
+            
+            // Add loading indicator
+            output.innerHTML = "Compiling and running...\n";
+            
+            // Simulate execution (in a real implementation, this would call the ASTRA interpreter)
+            setTimeout(() => {
+                output.innerHTML += "\n// Execution results:\n";
+                
+                // Simple simulation of ASTRA execution
+                if (code.includes("Hello, ASTRA!")) {
+                    output.innerHTML += "Hello, ASTRA!\n";
+                }
+                
+                if (code.includes("vector3")) {
+                    output.innerHTML += "Position: [1.000, 2.000, 3.000]\n";
+                    output.innerHTML += "Velocity: [0.100, 0.200, 0.300]\n";
+                    output.innerHTML += "Speed: 0.374 m/s\n";
+                }
+                
+                if (code.includes("orbit") || code.includes("mechanics.calculate_orbit")) {
+                    output.innerHTML += "Calculating orbit...\n";
+                    output.innerHTML += "Orbit parameters:\n";
+                    output.innerHTML += "  Semi-major axis: 6878.0 km\n";
+                    output.innerHTML += "  Eccentricity: 0.001\n";
+                    output.innerHTML += "  Inclination: 51.6 degrees\n";
+                    output.innerHTML += "  Period: 92.3 minutes\n";
+                }
+                
+                if (code.includes("drone") || code.includes("navigation")) {
+                    output.innerHTML += "Initializing drone navigation...\n";
+                    output.innerHTML += "Planning path with 3 waypoints\n";
+                    output.innerHTML += "Path length: 1.52 km\n";
+                    output.innerHTML += "Estimated flight time: 5.1 minutes\n";
+                }
+                
+                // Add execution complete message
+                output.innerHTML += "\n// Execution completed successfully\n";
+            }, 1000);
+        }
+
+        // Function to clear output
+        function clearOutput() {
+            document.getElementById("output").innerHTML = "// Output cleared";
+        }
+
+        // Function to load example code
+        function loadExample(example) {
+            switch(example) {
+                case 'hello':
+                    editor.setValue(`// Hello World Example
+
+import core.io;
+
+func main() {
+    io.println("Hello, ASTRA!");
+    
+    // Basic variable declaration
+    var name: string = "Spacecraft";
+    var mission_day: int = 42;
+    
+    io.println("Mission day " + mission_day.to_string() + " of " + name);
+}
+`);
+                    break;
+                case 'orbit':
+                    editor.setValue(`// Orbit Calculation Example
+
+import orbital.mechanics;
+import core.io;
+
+func main() {
+    // Define orbital parameters
+    var altitude: float = 500.0; // km
+    var inclination: float = 51.6; // degrees (ISS inclination)
+    var eccentricity: float = 0.001;
+    
+    // Calculate orbit
+    var orbit = mechanics.calculate_orbit(
+        semi_major_axis: 6371.0 + altitude, // Earth radius + altitude
+        eccentricity: eccentricity,
+        inclination: math.radians(inclination)
+    );
+    
+    // Display orbit information
+    io.println("Orbit parameters:");
+    io.println("  Altitude: " + altitude.to_string() + " km");
+    io.println("  Period: " + orbit.period.to_string() + " minutes");
+    io.println("  Velocity: " + orbit.velocity.to_string() + " km/s");
+    
+    // Calculate position after one hour
+    var position = mechanics.propagate_orbit(orbit, time.hours(1));
+    io.println("Position after 1 hour: " + position.to_string());
+}
+`);
+                    break;
+                case 'drone':
+                    editor.setValue(`// Drone Navigation Example
+
+import navigation.guidance;
+import sensors.gps;
+import core.io;
+
+func main() {
+    // Define waypoints for the mission
+    var waypoints = [
+        vector3(47.123, 8.456, 100.0), // lat, lon, altitude
+        vector3(47.125, 8.458, 120.0),
+        vector3(47.127, 8.457, 100.0)
+    ];
+    
+    // Get current position
+    var current_position = gps.get_position();
+    io.println("Current position: " + current_position.to_string());
+    
+    // Plan path through waypoints
+    var path = guidance.plan_path(
+        start: current_position,
+        waypoints: waypoints,
+        avoid_obstacles: true
+    );
+    
+    // Display path information
+    io.println("Path planned with " + path.segments.size().to_string() + " segments");
+    io.println("Total distance: " + path.total_distance.to_string() + " meters");
+    
+    // Calculate estimated flight time at 15 m/s
+    var flight_time = path.total_distance / 15.0;
+    io.println("Estimated flight time: " + flight_time.to_string() + " seconds");
+}
+`);
+                    break;
+                case 'vectors':
+                    editor.setValue(`// Vector Operations Example
+
+import core.math;
+import core.io;
+
+func main() {
+    // Create vectors
+    var position = vector3(1.0, 2.0, 3.0);
+    var velocity = vector3(0.1, 0.2, 0.3);
+    
+    // Basic vector operations
+    var sum = position + velocity;
+    var difference = position - velocity;
+    var scaled = position * 2.0;
+    var normalized = velocity.normalize();
+    
+    // Display results
+    io.println("Position: " + position.to_string());
+    io.println("Velocity: " + velocity.to_string());
+    io.println("Sum: " + sum.to_string());
+    io.println("Difference: " + difference.to_string());
+    io.println("Scaled: " + scaled.to_string());
+    io.println("Normalized: " + normalized.to_string());
+    
+    // Vector products
+    var dot_product = position.dot(velocity);
+    var cross_product = position.cross(velocity);
+    
+    io.println("Dot product: " + dot_product.to_string());
+    io.println("Cross product: " + cross_product.to_string());
+    
+    // Rotation
+    var rotation = quaternion.from_axis_angle(
+        axis: vector3(0.0, 0.0, 1.0),
+        angle: math.radians(90.0)
+    );
+    
+    var rotated = rotation.rotate(position);
+    io.println("Rotated 90° around Z: " + rotated.to_string());
+}
+`);
+                    break;
+            }
+        }
+    </script>
+</body>
+</html>

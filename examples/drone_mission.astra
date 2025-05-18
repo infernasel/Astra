@@ -1,0 +1,231 @@
+// ASTRA Example: Autonomous Drone Mission
+// This program demonstrates UAV control for an autonomous survey mission
+
+import uav.control;
+import navigation.waypoints;
+import sensors.camera;
+import sensors.lidar;
+import communication.telemetry;
+
+// Mission parameters
+const MAX_ALTITUDE: float = 120.0; // meters
+const CRUISE_SPEED: float = 15.0; // m/s
+const SURVEY_ALTITUDE: float = 80.0; // meters
+const BATTERY_RESERVE: float = 20.0; // percent
+
+// Define survey area as a polygon
+const SURVEY_AREA: polygon = [
+    vector3(47.123, 8.456, 0.0),
+    vector3(47.125, 8.458, 0.0),
+    vector3(47.127, 8.457, 0.0),
+    vector3(47.126, 8.454, 0.0)
+];
+
+// Main module for drone mission control
+module mission_control {
+    // Drone state
+    var current_position: vector3;
+    var current_heading: float;
+    var current_altitude: float;
+    var battery_level: float;
+    var mission_waypoints: list<waypoint>;
+    var current_waypoint_index: int = 0;
+    var mission_complete: bool = false;
+    
+    // Initialize the mission
+    func initialize() -> bool {
+        try {
+            // Initialize all systems
+            if !control.initialize() {
+                log.error("Failed to initialize drone control systems");
+                return false;
+            }
+            
+            // Get current drone state
+            current_position = control.get_position();
+            current_heading = control.get_heading();
+            current_altitude = current_position.z;
+            battery_level = control.get_battery_level();
+            
+            // Check if battery is sufficient
+            if battery_level < BATTERY_RESERVE + 30.0 {
+                log.error("Insufficient battery for mission: {}%", battery_level);
+                return false;
+            }
+            
+            // Generate survey waypoints
+            mission_waypoints = waypoints.generate_survey_pattern(
+                SURVEY_AREA,
+                SURVEY_ALTITUDE,
+                20.0 // 20 meter spacing between survey lines
+            );
+            
+            // Add return-to-home waypoint
+            mission_waypoints.append(waypoint(
+                control.home_position,
+                5.0, // 5 meter approach speed
+                "RTH"
+            ));
+            
+            log.info("Mission initialized with {} waypoints", mission_waypoints.size());
+            return true;
+        } catch error {
+            log.error("Mission initialization failed: {}", error.message);
+            return false;
+        }
+    }
+    
+    // Execute the mission
+    func execute() {
+        // Take off to initial altitude
+        log.info("Taking off to {} meters", SURVEY_ALTITUDE);
+        
+        @verify(current_altitude < MAX_ALTITUDE, "Altitude exceeds maximum allowed")
+        control.takeoff(SURVEY_ALTITUDE);
+        
+        // Wait until target altitude reached
+        control.wait_for_altitude(SURVEY_ALTITUDE, 2.0); // 2 meter tolerance
+        
+        // Start camera recording
+        camera.start_recording("/data/mission_" + time.now().format("%Y%m%d_%H%M%S") + ".mp4");
+        
+        // Navigate through all waypoints
+        while current_waypoint_index < mission_waypoints.size() && !mission_complete {
+            // Check battery level before proceeding to next waypoint
+            battery_level = control.get_battery_level();
+            if battery_level <= BATTERY_RESERVE {
+                log.warning("Battery reserve reached ({}%). Aborting mission and returning home.", 
+                           battery_level);
+                return_to_home();
+                break;
+            }
+            
+            // Get next waypoint
+            var waypoint = mission_waypoints[current_waypoint_index];
+            log.info("Navigating to waypoint {}: {}", current_waypoint_index, waypoint.name);
+            
+            // Set speed for this waypoint
+            control.set_speed(waypoint.speed);
+            
+            // Navigate to waypoint
+            control.navigate_to(waypoint.position);
+            
+            // Wait until waypoint reached
+            control.wait_for_position(waypoint.position, 3.0); // 3 meter tolerance
+            
+            // If this is a survey waypoint, perform survey actions
+            if waypoint.name.starts_with("SURVEY") {
+                perform_survey_at_waypoint();
+            }
+            
+            // Move to next waypoint
+            current_waypoint_index += 1;
+            
+            // Check if this was the last waypoint
+            if current_waypoint_index >= mission_waypoints.size() {
+                mission_complete = true;
+            }
+        }
+        
+        // Stop recording
+        camera.stop_recording();
+        
+        // If mission was aborted, we need to return home
+        if !mission_complete {
+            return_to_home();
+        }
+        
+        // Land the drone
+        log.info("Mission complete. Landing...");
+        control.land();
+    }
+    
+    // Perform survey actions at current waypoint
+    func perform_survey_at_waypoint() {
+        // Capture high-resolution photo
+        camera.capture_photo("/data/survey_" + 
+                            time.now().format("%Y%m%d_%H%M%S") + ".jpg");
+        
+        // Perform LIDAR scan of the area
+        var scan_data = lidar.perform_scan(360.0, 1.0); // 360 degree scan, 1 degree resolution
+        lidar.save_scan(scan_data, "/data/lidar_" + 
+                       time.now().format("%Y%m%d_%H%M%S") + ".dat");
+        
+        // Send telemetry update
+        telemetry.send_status_update("Survey point completed");
+    }
+    
+    // Return to home location
+    func return_to_home() {
+        log.info("Returning to home location");
+        
+        // Stop current action
+        control.cancel_current_action();
+        
+        // Set safe return speed
+        control.set_speed(CRUISE_SPEED);
+        
+        // First rise to safe altitude if needed
+        current_altitude = control.get_position().z;
+        if current_altitude < SURVEY_ALTITUDE {
+            control.set_altitude(SURVEY_ALTITUDE);
+            control.wait_for_altitude(SURVEY_ALTITUDE, 2.0);
+        }
+        
+        // Navigate home
+        control.return_to_home();
+        
+        // Wait until home position reached
+        control.wait_for_position(control.home_position, 5.0);
+    }
+    
+    // Handle emergency situations
+    @deadline(100ms)
+    func handle_emergency(emergency: emergency_type) {
+        log.error("Emergency detected: {}", emergency);
+        
+        // Different responses based on emergency type
+        if emergency == emergency_type.LOW_BATTERY {
+            // Critical battery - land immediately
+            if battery_level < 10.0 {
+                log.critical("Critical battery level. Emergency landing.");
+                control.emergency_land();
+            } else {
+                // Try to return home
+                return_to_home();
+            }
+        } else if emergency == emergency_type.HIGH_WIND {
+            // Reduce altitude to minimize wind exposure
+            log.warning("High wind detected. Reducing altitude.");
+            control.set_altitude(30.0);
+            return_to_home();
+        } else if emergency == emergency_type.GPS_LOSS {
+            // Hold position using visual odometry
+            log.warning("GPS signal lost. Holding position with visual odometry.");
+            control.enable_visual_odometry();
+            control.hover();
+        } else {
+            // Default emergency response
+            log.critical("Unhandled emergency. Performing emergency landing.");
+            control.emergency_land();
+        }
+    }
+}
+
+// Main entry point
+func main() {
+    // Register emergency handler
+    control.set_emergency_handler(mission_control.handle_emergency);
+    
+    // Initialize the mission
+    if mission_control.initialize() {
+        log.info("Starting autonomous survey mission");
+        
+        // Execute the mission
+        mission_control.execute();
+        
+        log.info("Mission ended");
+    } else {
+        log.error("Failed to initialize mission");
+    }
+}

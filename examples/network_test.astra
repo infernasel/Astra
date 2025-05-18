@@ -1,0 +1,226 @@
+/**
+ * ASTRA Network Module Test
+ * 
+ * This example demonstrates the usage of the network module in ASTRA.
+ */
+
+import core.io;
+import core.network;
+
+// Test HTTP client
+func testHttpClient() {
+    io.println("Testing HTTP client...");
+    
+    // Create HTTP client
+    var client = HttpClient();
+    
+    // Set user agent
+    client.setUserAgent("ASTRA Network Test/1.0");
+    
+    // Make GET request
+    io.println("Making GET request to httpbin.org...");
+    var response = client.get("http://httpbin.org/get");
+    
+    // Check response
+    if (response.isSuccess()) {
+        io.println("Request successful!");
+        io.println("Status code: " + response.statusCode.toString());
+        io.println("Response body: " + response.body.toString());
+    } else {
+        io.println("Request failed!");
+        io.println("Status code: " + response.statusCode.toString());
+        io.println("Status message: " + response.statusMessage);
+    }
+    
+    // Make POST request
+    io.println("\nMaking POST request to httpbin.org...");
+    var postData = "Hello from ASTRA!";
+    response = client.post("http://httpbin.org/post", postData, "text/plain");
+    
+    // Check response
+    if (response.isSuccess()) {
+        io.println("Request successful!");
+        io.println("Status code: " + response.statusCode.toString());
+        io.println("Response body: " + response.body.toString());
+    } else {
+        io.println("Request failed!");
+        io.println("Status code: " + response.statusCode.toString());
+        io.println("Status message: " + response.statusMessage);
+    }
+}
+
+// Test DNS resolver
+func testDnsResolver() {
+    io.println("\nTesting DNS resolver...");
+    
+    // Resolve hostname
+    var hostname = "www.example.com";
+    io.println("Resolving " + hostname + "...");
+    
+    var addresses = DnsResolver.resolve(hostname);
+    
+    io.println("Found " + addresses.length.toString() + " addresses:");
+    for (var i = 0; i < addresses.length; i++) {
+        io.println("  " + addresses[i].address + " (IPv" + (addresses[i].type == IPAddressType.IPv4 ? "4" : "6") + ")");
+    }
+    
+    // Reverse lookup
+    if (addresses.length > 0) {
+        io.println("\nPerforming reverse lookup on " + addresses[0].address + "...");
+        var name = DnsResolver.reverseLookup(addresses[0]);
+        io.println("Hostname: " + name);
+    }
+}
+
+// Test socket communication
+func testSocketCommunication() {
+    io.println("\nTesting socket communication...");
+    
+    // Create TCP server
+    var server = Socket(SocketType.TCP);
+    var serverAddress = SocketAddress("127.0.0.1", 8080);
+    
+    // Bind and listen
+    if (server.bind(serverAddress) && server.listen(5)) {
+        io.println("Server listening on " + serverAddress.toString());
+        
+        // Start client in a separate thread
+        thread.spawn(() => {
+            // Wait for server to start
+            thread.sleep(100);
+            
+            // Create TCP client
+            var client = Socket(SocketType.TCP);
+            var clientAddress = SocketAddress("127.0.0.1", 8080);
+            
+            // Connect to server
+            if (client.connect(clientAddress)) {
+                io.println("Client connected to " + clientAddress.toString());
+                
+                // Send data
+                var message = "Hello from ASTRA client!";
+                var messageBytes = array<int>[message.length];
+                for (var i = 0; i < message.length; i++) {
+                    messageBytes[i] = message.charCodeAt(i);
+                }
+                
+                client.send(messageBytes);
+                io.println("Client sent: " + message);
+                
+                // Receive response
+                var responseBytes = client.receive(1024);
+                if (responseBytes != null) {
+                    var response = "";
+                    for (var i = 0; i < responseBytes.length; i++) {
+                        response += String.fromCharCode(responseBytes[i]);
+                    }
+                    
+                    io.println("Client received: " + response);
+                }
+                
+                // Close connection
+                client.close();
+            } else {
+                io.println("Client failed to connect: " + client.getLastError());
+            }
+        });
+        
+        // Accept client connection
+        var client = server.accept();
+        if (client != null) {
+            io.println("Server accepted connection from " + client.getRemoteAddress().toString());
+            
+            // Receive data
+            var requestBytes = client.receive(1024);
+            if (requestBytes != null) {
+                var request = "";
+                for (var i = 0; i < requestBytes.length; i++) {
+                    request += String.fromCharCode(requestBytes[i]);
+                }
+                
+                io.println("Server received: " + request);
+                
+                // Send response
+                var response = "Hello from ASTRA server!";
+                var responseBytes = array<int>[response.length];
+                for (var i = 0; i < response.length; i++) {
+                    responseBytes[i] = response.charCodeAt(i);
+                }
+                
+                client.send(responseBytes);
+                io.println("Server sent: " + response);
+            }
+            
+            // Close connection
+            client.close();
+        } else {
+            io.println("Server failed to accept connection: " + server.getLastError());
+        }
+        
+        // Close server
+        server.close();
+    } else {
+        io.println("Server failed to start: " + server.getLastError());
+    }
+}
+
+// Test network interfaces
+func testNetworkInterfaces() {
+    io.println("\nTesting network interfaces...");
+    
+    var interfaces = NetworkUtils.getNetworkInterfaces();
+    
+    io.println("Found " + interfaces.length.toString() + " network interfaces:");
+    for (var i = 0; i < interfaces.length; i++) {
+        var iface = interfaces[i];
+        io.println("  " + iface.name + ":");
+        io.println("    Address: " + iface.address.address);
+        io.println("    Netmask: " + iface.netmask.address);
+        io.println("    Broadcast: " + iface.broadcast.address);
+        io.println("    Up: " + iface.up.toString());
+        io.println("    Loopback: " + iface.loopback.toString());
+    }
+}
+
+// Test port scanning
+func testPortScanning() {
+    io.println("\nTesting port scanning...");
+    
+    var host = "localhost";
+    var ports = [80, 443, 8080, 8443];
+    
+    io.println("Scanning ports on " + host + "...");
+    
+    for (var i = 0; i < ports.length; i++) {
+        var port = ports[i];
+        var isOpen = NetworkUtils.isPortOpen(host, port, 500);
+        
+        io.println("  Port " + port.toString() + ": " + (isOpen ? "Open" : "Closed"));
+    }
+}
+
+// Main function
+func main() {
+    io.println("ASTRA Network Module Test");
+    io.println("========================\n");
+    
+    // Test HTTP client
+    testHttpClient();
+    
+    // Test DNS resolver
+    testDnsResolver();
+    
+    // Test socket communication
+    testSocketCommunication();
+    
+    // Test network interfaces
+    testNetworkInterfaces();
+    
+    // Test port scanning
+    testPortScanning();
+    
+    io.println("\nAll tests completed!");
+}
+
+// Run main function
+main();

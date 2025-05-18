@@ -1,0 +1,149 @@
+/**
+ * ASTRA Example: Quaternion Module Test
+ * 
+ * This example demonstrates the usage of the Quaternion module
+ * for 3D rotations and attitude representation.
+ */
+
+import core.io;
+import core.math;
+import quaternion;
+import vector;
+
+func main() {
+    io.println("Quaternion Module Test");
+    io.println("=====================");
+    
+    // Creating quaternions
+    io.println("\nCreating Quaternions:");
+    
+    var q1 = Quaternion(1.0, 0.0, 0.0, 0.0);  // Identity quaternion (w, x, y, z)
+    var q2 = Quaternion.identity();           // Another way to create identity
+    var q3 = Quaternion(0.7071, 0.7071, 0.0, 0.0);  // 90° rotation around X
+    
+    io.println("q1 = " + q1.toString());
+    io.println("q2 = " + q2.toString());
+    io.println("q3 = " + q3.toString());
+    
+    // Creating quaternions from Euler angles
+    io.println("\nQuaternions from Euler Angles:");
+    
+    var roll = Math.radians(30.0);
+    var pitch = Math.radians(45.0);
+    var yaw = Math.radians(60.0);
+    
+    var qEuler = Quaternion.fromEuler(roll, pitch, yaw);
+    io.println("Quaternion from Euler(30°, 45°, 60°) = " + qEuler.toString());
+    
+    // Converting back to Euler angles
+    var eulerAngles = qEuler.toEuler();
+    io.println("Back to Euler angles (radians) = (" + 
+              eulerAngles.x.toString() + ", " + 
+              eulerAngles.y.toString() + ", " + 
+              eulerAngles.z.toString() + ")");
+    io.println("Back to Euler angles (degrees) = (" + 
+              Math.degrees(eulerAngles.x).toString() + "°, " + 
+              Math.degrees(eulerAngles.y).toString() + "°, " + 
+              Math.degrees(eulerAngles.z).toString() + "°)");
+    
+    // Creating quaternions from axis-angle
+    io.println("\nQuaternions from Axis-Angle:");
+    
+    var axis = Vector3(0.0, 1.0, 0.0);  // Y-axis
+    var angle = Math.radians(90.0);     // 90 degrees
+    
+    var qAxisAngle = Quaternion.fromAxisAngle(axis, angle);
+    io.println("Quaternion from 90° around Y-axis = " + qAxisAngle.toString());
+    
+    // Getting axis and angle back
+    var resultAxis = qAxisAngle.getAxis();
+    var resultAngle = qAxisAngle.getAngle();
+    
+    io.println("Back to axis = " + resultAxis.toString());
+    io.println("Back to angle = " + resultAngle.toString() + " radians (" + 
+              Math.degrees(resultAngle).toString() + "°)");
+    
+    // Quaternion operations
+    io.println("\nQuaternion Operations:");
+    
+    // Multiplication (composition of rotations)
+    var q4 = Quaternion.fromAxisAngle(Vector3(1.0, 0.0, 0.0), Math.radians(90.0));  // 90° around X
+    var q5 = Quaternion.fromAxisAngle(Vector3(0.0, 1.0, 0.0), Math.radians(90.0));  // 90° around Y
+    
+    var q6 = q4.multiply(q5);  // First rotate around X, then around Y
+    var q7 = q5.multiply(q4);  // First rotate around Y, then around X
+    
+    io.println("q4 (90° around X) = " + q4.toString());
+    io.println("q5 (90° around Y) = " + q5.toString());
+    io.println("q4 * q5 = " + q6.toString());
+    io.println("q5 * q4 = " + q7.toString());
+    io.println("Note: q4 * q5 != q5 * q4 (quaternion multiplication is not commutative)");
+    
+    // Conjugate and inverse
+    io.println("\nConjugate and Inverse:");
+    
+    var qTest = Quaternion(0.7071, 0.7071, 0.0, 0.0);
+    var qConj = qTest.conjugate();
+    var qInv = qTest.inverse();
+    
+    io.println("qTest = " + qTest.toString());
+    io.println("qTest conjugate = " + qConj.toString());
+    io.println("qTest inverse = " + qInv.toString());
+    io.println("qTest * qTest inverse = " + qTest.multiply(qInv).toString() + " (should be identity)");
+    
+    // Rotating vectors
+    io.println("\nRotating Vectors:");
+    
+    var v = Vector3(1.0, 0.0, 0.0);  // Vector pointing along X-axis
+    
+    // Rotate 90° around Z-axis (should point along Y-axis)
+    var qRotZ = Quaternion.fromAxisAngle(Vector3(0.0, 0.0, 1.0), Math.radians(90.0));
+    var vRotZ = qRotZ.rotateVector(v);
+    
+    // Rotate 90° around Y-axis (should point along negative Z-axis)
+    var qRotY = Quaternion.fromAxisAngle(Vector3(0.0, 1.0, 0.0), Math.radians(90.0));
+    var vRotY = qRotY.rotateVector(v);
+    
+    io.println("Original vector = " + v.toString());
+    io.println("After 90° rotation around Z = " + vRotZ.toString() + " (should be ~(0,1,0))");
+    io.println("After 90° rotation around Y = " + vRotY.toString() + " (should be ~(0,0,-1))");
+    
+    // Spherical linear interpolation (SLERP)
+    io.println("\nSpherical Linear Interpolation (SLERP):");
+    
+    var qStart = Quaternion.identity();
+    var qEnd = Quaternion.fromAxisAngle(Vector3(0.0, 0.0, 1.0), Math.radians(180.0));  // 180° around Z
+    
+    io.println("qStart = " + qStart.toString());
+    io.println("qEnd = " + qEnd.toString());
+    io.println("SLERP(t=0.0) = " + Quaternion.slerp(qStart, qEnd, 0.0).toString());
+    io.println("SLERP(t=0.25) = " + Quaternion.slerp(qStart, qEnd, 0.25).toString());
+    io.println("SLERP(t=0.5) = " + Quaternion.slerp(qStart, qEnd, 0.5).toString());
+    io.println("SLERP(t=0.75) = " + Quaternion.slerp(qStart, qEnd, 0.75).toString());
+    io.println("SLERP(t=1.0) = " + Quaternion.slerp(qStart, qEnd, 1.0).toString());
+    
+    // Conversion to/from matrix
+    io.println("\nConversion to/from Matrix:");
+    
+    var qMatrix = Quaternion.fromEuler(
+        Math.radians(30.0),
+        Math.radians(45.0),
+        Math.radians(60.0)
+    );
+    
+    var matrix = qMatrix.toMatrix();
+    var qFromMatrix = Quaternion.fromMatrix(matrix);
+    
+    io.println("Original quaternion = " + qMatrix.toString());
+    io.println("Quaternion from matrix = " + qFromMatrix.toString());
+    
+    // Equality test
+    io.println("\nEquality Test:");
+    
+    var qa = Quaternion(1.0, 0.0, 0.0, 0.0);
+    var qb = Quaternion(1.0, 0.0, 0.0, 0.0);
+    var qc = Quaternion(0.0, 1.0, 0.0, 0.0);
+    
+    io.println("qa equals qb? " + qa.equals(qb).toString());
+    io.println("qa equals qc? " + qa.equals(qc).toString());
+}

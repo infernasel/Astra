@@ -1,0 +1,139 @@
+// ASTRA Example: Orbit Adjustment Program
+// This program demonstrates a simple orbit adjustment procedure
+
+import orbital.mechanics;
+import propulsion.thrusters;
+import telemetry.sensors;
+
+// Constants for orbital parameters
+const EARTH_RADIUS: float = 6371.0; // km
+const EARTH_MU: float = 398600.4418; // km³/s²
+const TARGET_ALTITUDE: float = 500.0; // km
+const ALTITUDE_TOLERANCE: float = 0.1; // km
+
+// Main module for orbit adjustment
+module orbit_adjustment {
+    // Current spacecraft state
+    var current_position: vector3;
+    var current_velocity: vector3;
+    var current_orbit: orbit;
+    
+    // Initialize the module
+    func initialize() {
+        // Get current position and velocity from sensors
+        current_position = sensors.gps.get_position();
+        current_velocity = sensors.imu.get_velocity();
+        
+        // Calculate current orbit
+        current_orbit = mechanics.calculate_orbit(current_position, current_velocity);
+        
+        // Log initialization
+        log.info("Orbit adjustment initialized");
+        log.info("Current orbit: apogee = {}, perigee = {}", 
+                 current_orbit.apogee, current_orbit.perigee);
+    }
+    
+    // Calculate required delta-v for orbit adjustment
+    func calculate_delta_v() -> vector3 {
+        // Target orbit parameters
+        var target_radius = EARTH_RADIUS + TARGET_ALTITUDE;
+        var target_orbit = mechanics.circular_orbit(target_radius);
+        
+        // Calculate transfer orbit
+        var transfer = mechanics.hohmann_transfer(current_orbit, target_orbit);
+        
+        // Return the required delta-v vector for the first burn
+        return transfer.initial_burn;
+    }
+    
+    // Execute orbit adjustment maneuver
+    @verify(thrusters.fuel_remaining > 5.0, "Insufficient fuel for maneuver")
+    func execute_adjustment() -> bool {
+        try {
+            // Calculate required velocity change
+            var delta_v = calculate_delta_v();
+            var burn_duration = thrusters.calculate_burn_time(delta_v);
+            
+            log.info("Starting orbit adjustment maneuver");
+            log.info("Delta-v: {} m/s, Burn duration: {} s", delta_v.magnitude(), burn_duration);
+            
+            // Execute the burn with real-time monitoring
+            @deadline(100ms)
+            task monitor_burn() {
+                while thrusters.is_burning() {
+                    var actual_acceleration = sensors.imu.get_acceleration();
+                    var expected_acceleration = delta_v.normalized() * thrusters.max_acceleration;
+                    
+                    if (actual_acceleration - expected_acceleration).magnitude() > 0.1 {
+                        log.warning("Burn deviation detected");
+                        thrusters.adjust_vector(actual_acceleration, expected_acceleration);
+                    }
+                    
+                    sleep(50ms);
+                }
+            }
+            
+            // Execute the burn
+            thrusters.execute_burn(delta_v);
+            
+            // Wait for burn completion
+            thrusters.wait_for_completion();
+            
+            // Verify new orbit
+            update_orbit_parameters();
+            var altitude_error = abs(current_orbit.semi_major_axis - EARTH_RADIUS - TARGET_ALTITUDE);
+            
+            if altitude_error <= ALTITUDE_TOLERANCE {
+                log.info("Orbit adjustment successful");
+                return true;
+            } else {
+                log.warning("Orbit adjustment incomplete. Error: {} km", altitude_error);
+                return false;
+            }
+        } catch error: PropulsionError {
+            log.error("Propulsion system error: {}", error.message);
+            return false;
+        } catch error {
+            log.error("Unexpected error during orbit adjustment: {}", error.message);
+            return false;
+        }
+    }
+    
+    // Update orbit parameters based on current position and velocity
+    func update_orbit_parameters() {
+        current_position = sensors.gps.get_position();
+        current_velocity = sensors.imu.get_velocity();
+        current_orbit = mechanics.calculate_orbit(current_position, current_velocity);
+        
+        log.info("Updated orbit: apogee = {}, perigee = {}", 
+                 current_orbit.apogee, current_orbit.perigee);
+    }
+}
+
+// Main entry point
+func main() {
+    // Initialize systems
+    sensors.initialize();
+    thrusters.initialize();
+    
+    // Initialize orbit adjustment module
+    orbit_adjustment.initialize();
+    
+    // Check if adjustment is needed
+    var current_altitude = orbit_adjustment.current_orbit.semi_major_axis - EARTH_RADIUS;
+    var altitude_error = abs(current_altitude - TARGET_ALTITUDE);
+    
+    if altitude_error > ALTITUDE_TOLERANCE {
+        log.info("Orbit adjustment required. Current altitude: {} km, Target: {} km", 
+                 current_altitude, TARGET_ALTITUDE);
+        
+        // Execute adjustment if needed
+        if orbit_adjustment.execute_adjustment() {
+            log.info("Mission successful");
+        } else {
+            log.warning("Mission incomplete, manual intervention may be required");
+        }
+    } else {
+        log.info("Orbit already within tolerance. No adjustment needed.");
+    }
+}

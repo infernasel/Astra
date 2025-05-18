@@ -1,0 +1,116 @@
+/**
+ * ASTRA Example: Vector Module Test
+ * 
+ * This example demonstrates the usage of the Vector module
+ * with various vector operations.
+ */
+
+import core.io;
+import core.math;
+import vector;
+
+func main() {
+    io.println("Vector Module Test");
+    io.println("=================");
+    
+    // Vector2 tests
+    io.println("\nVector2 Tests:");
+    
+    var v2a = Vector2(3.0, 4.0);
+    var v2b = Vector2(1.0, 2.0);
+    
+    io.println("v2a = " + v2a.toString());
+    io.println("v2b = " + v2b.toString());
+    io.println("v2a + v2b = " + v2a.add(v2b).toString());
+    io.println("v2a - v2b = " + v2a.subtract(v2b).toString());
+    io.println("v2a * 2.0 = " + v2a.multiply(2.0).toString());
+    io.println("v2a / 2.0 = " + v2a.divide(2.0).toString());
+    io.println("v2a dot v2b = " + v2a.dot(v2b).toString());
+    io.println("v2a cross v2b = " + v2a.cross(v2b).toString());
+    io.println("magnitude of v2a = " + v2a.magnitude().toString());
+    io.println("normalized v2a = " + v2a.normalize().toString());
+    io.println("distance between v2a and v2b = " + v2a.distance(v2b).toString());
+    io.println("angle of v2a = " + v2a.angle().toString() + " radians");
+    io.println("v2a rotated by 90 degrees = " + v2a.rotate(Math.radians(90.0)).toString());
+    
+    // Vector3 tests
+    io.println("\nVector3 Tests:");
+    
+    var v3a = Vector3(3.0, 4.0, 5.0);
+    var v3b = Vector3(1.0, 2.0, 3.0);
+    
+    io.println("v3a = " + v3a.toString());
+    io.println("v3b = " + v3b.toString());
+    io.println("v3a + v3b = " + v3a.add(v3b).toString());
+    io.println("v3a - v3b = " + v3a.subtract(v3b).toString());
+    io.println("v3a * 2.0 = " + v3a.multiply(2.0).toString());
+    io.println("v3a / 2.0 = " + v3a.divide(2.0).toString());
+    io.println("v3a dot v3b = " + v3a.dot(v3b).toString());
+    io.println("v3a cross v3b = " + v3a.cross(v3b).toString());
+    io.println("magnitude of v3a = " + v3a.magnitude().toString());
+    io.println("normalized v3a = " + v3a.normalize().toString());
+    io.println("distance between v3a and v3b = " + v3a.distance(v3b).toString());
+    io.println("angle between v3a and v3b = " + v3a.angle(v3b).toString() + " radians");
+    
+    // Rotation tests
+    io.println("\nVector3 Rotation Tests:");
+    
+    var v3c = Vector3(1.0, 0.0, 0.0);
+    io.println("v3c = " + v3c.toString());
+    io.println("v3c rotated 90° around X = " + v3c.rotateX(Math.radians(90.0)).toString());
+    io.println("v3c rotated 90° around Y = " + v3c.rotateY(Math.radians(90.0)).toString());
+    io.println("v3c rotated 90° around Z = " + v3c.rotateZ(Math.radians(90.0)).toString());
+    
+    // Vector4 tests
+    io.println("\nVector4 Tests:");
+    
+    var v4a = Vector4(3.0, 4.0, 5.0, 6.0);
+    var v4b = Vector4(1.0, 2.0, 3.0, 4.0);
+    
+    io.println("v4a = " + v4a.toString());
+    io.println("v4b = " + v4b.toString());
+    io.println("v4a + v4b = " + v4a.add(v4b).toString());
+    io.println("v4a - v4b = " + v4a.subtract(v4b).toString());
+    io.println("v4a * 2.0 = " + v4a.multiply(2.0).toString());
+    io.println("v4a / 2.0 = " + v4a.divide(2.0).toString());
+    io.println("v4a dot v4b = " + v4a.dot(v4b).toString());
+    io.println("magnitude of v4a = " + v4a.magnitude().toString());
+    io.println("normalized v4a = " + v4a.normalize().toString());
+    io.println("distance between v4a and v4b = " + v4a.distance(v4b).toString());
+    
+    // Linear interpolation tests
+    io.println("\nLinear Interpolation Tests:");
+    
+    var v2c = Vector2(0.0, 0.0);
+    var v2d = Vector2(10.0, 10.0);
+    io.println("Lerp v2c to v2d (t=0.0) = " + v2c.lerp(v2d, 0.0).toString());
+    io.println("Lerp v2c to v2d (t=0.5) = " + v2c.lerp(v2d, 0.5).toString());
+    io.println("Lerp v2c to v2d (t=1.0) = " + v2c.lerp(v2d, 1.0).toString());
+    
+    var v3d = Vector3(0.0, 0.0, 0.0);
+    var v3e = Vector3(10.0, 10.0, 10.0);
+    io.println("Lerp v3d to v3e (t=0.0) = " + v3d.lerp(v3e, 0.0).toString());
+    io.println("Lerp v3d to v3e (t=0.5) = " + v3d.lerp(v3e, 0.5).toString());
+    io.println("Lerp v3d to v3e (t=1.0) = " + v3d.lerp(v3e, 1.0).toString());
+    
+    var v4c = Vector4(0.0, 0.0, 0.0, 0.0);
+    var v4d = Vector4(10.0, 10.0, 10.0, 10.0);
+    io.println("Lerp v4c to v4d (t=0.0) = " + v4c.lerp(v4d, 0.0).toString());
+    io.println("Lerp v4c to v4d (t=0.5) = " + v4c.lerp(v4d, 0.5).toString());
+    io.println("Lerp v4c to v4d (t=1.0) = " + v4c.lerp(v4d, 1.0).toString());
+    
+    // Equality tests
+    io.println("\nEquality Tests:");
+    
+    var v2e = Vector2(3.0, 4.0);
+    io.println("v2a equals v2e? " + v2a.equals(v2e).toString());
+    io.println("v2a equals v2b? " + v2a.equals(v2b).toString());
+    
+    var v3f = Vector3(3.0, 4.0, 5.0);
+    io.println("v3a equals v3f? " + v3a.equals(v3f).toString());
+    io.println("v3a equals v3b? " + v3a.equals(v3b).toString());
+    
+    var v4e = Vector4(3.0, 4.0, 5.0, 6.0);
+    io.println("v4a equals v4e? " + v4a.equals(v4e).toString());
+    io.println("v4a equals v4b? " + v4a.equals(v4b).toString());
+}

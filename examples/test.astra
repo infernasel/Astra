@@ -1,0 +1,44 @@
+// Simple test program for ASTRA language
+
+// Print a welcome message
+println("Welcome to ASTRA Programming Language!");
+println("This is a simple test program.");
+
+// Define variables
+var x = 10;
+var y = 20;
+var sum = x + y;
+
+// Print the result
+println("The sum of " + x + " and " + y + " is " + sum);
+
+// Define a vector
+var position = Vector3(1.0, 2.0, 3.0);
+println("Position: " + position);
+
+// Define a quaternion for rotation
+var rotation = Quaternion.fromEuler(0.1, 0.2, 0.3);
+println("Rotation: " + rotation);
+
+// Perform a vector rotation
+var rotated = rotation.rotate(position);
+println("Rotated position: " + rotated);
+
+// Calculate orbital parameters
+var altitude = 400; // km
+var velocity = 7.7; // km/s
+var period = Orbital.calculatePeriod(altitude);
+println("Orbital period at " + altitude + " km: " + period + " minutes");
+
+// Simple control system
+function stabilize(position, target) {
+    var error = target - position;
+    var correction = error * 0.5; // P controller
+    return correction;
+}
+
+var targetPosition = Vector3(5.0, 5.0, 5.0);
+var correction = stabilize(position, targetPosition);
+println("Control correction: " + correction);
+
+println("Test completed successfully!");

@@ -1,0 +1,490 @@
+/**
+ * ASTRA Example: Autonomous Drone Mission Control
+ * 
+ * This example demonstrates a complete drone mission control system,
+ * including navigation, obstacle avoidance, and mission planning.
+ */
+
+import core.io;
+import core.time;
+import sensors.gps;
+import sensors.imu;
+import sensors.barometer;
+import sensors.camera;
+import sensors.lidar;
+import control.pid;
+import control.attitude;
+import control.trajectory;
+import navigation.path;
+import navigation.waypoint;
+import vector;
+import quaternion;
+
+// Configuration constants
+const CONTROL_FREQUENCY: float = 50.0;  // Hz
+const CONTROL_PERIOD: float = 1.0 / CONTROL_FREQUENCY;  // seconds
+const MAX_VELOCITY: float = 10.0;  // m/s
+const MAX_ACCELERATION: float = 5.0;  // m/s²
+const DRONE_MASS: float = 2.5;  // kg
+const SAFETY_ALTITUDE: float = 10.0;  // meters
+const WAYPOINT_RADIUS: float = 2.0;  // meters (distance to consider waypoint reached)
+
+/**
+ * Drone class representing the main control system
+ */
+class Drone {
+    // Sensors
+    private gps: GPS;
+    private imu: IMU;
+    private barometer: Barometer;
+    private camera: Camera;
+    private lidar: Lidar;
+    
+    // State
+    private position: vector3;
+    private velocity: vector3;
+    private attitude: quaternion;
+    private angularVelocity: vector3;
+    private altitude: float;
+    
+    // Control
+    private attitudeController: AttitudeController;
+    private trajectoryController: TrajectoryController;
+    private targetPosition: vector3;
+    private targetVelocity: vector3;
+    private targetAttitude: quaternion;
+    
+    // Mission
+    private missionPath: Path;
+    private currentWaypointIndex: int;
+    private missionComplete: bool;
+    
+    // Timing
+    private lastUpdateTime: float;
+    
+    /**
+     * Initialize the drone systems
+     */
+    public func initialize() {
+        // Initialize sensors
+        this.gps = GPS(0.5, 8);  // accuracy in meters, satellite count
+        this.imu = IMU(0.01, 0.001, 0.001);  // accel, gyro, mag accuracy
+        this.barometer = Barometer(0.1);  // accuracy in meters
+        this.camera = Camera(1920, 1080, 90.0);  // width, height, FOV
+        this.lidar = Lidar(100.0, 0.1);  // range in meters, resolution
+        
+        // Initialize state
+        this.position = vector3(0.0, 0.0, 0.0);
+        this.velocity = vector3(0.0, 0.0, 0.0);
+        this.attitude = quaternion.identity();
+        this.angularVelocity = vector3(0.0, 0.0, 0.0);
+        this.altitude = 0.0;
+        
+        // Initialize controllers
+        this.attitudeController = AttitudeController(
+            PID(4.0, 0.2, 1.0),  // Roll controller
+            PID(4.0, 0.2, 1.0),  // Pitch controller
+            PID(4.0, 0.2, 1.0)   // Yaw controller
+        );
+        
+        this.trajectoryController = TrajectoryController(
+            PID(2.0, 0.1, 0.5),  // X controller
+            PID(2.0, 0.1, 0.5),  // Y controller
+            PID(3.0, 0.2, 0.7)   // Z controller
+        );
+        
+        // Initialize mission
+        this.missionPath = Path();
+        this.currentWaypointIndex = 0;
+        this.missionComplete = false;
+        
+        // Initialize timing
+        this.lastUpdateTime = time.now();
+        
+        io.println("Drone systems initialized");
+    }
+    
+    /**
+     * Update sensor readings
+     */
+    public func updateSensors() {
+        // In a real system, these would read from hardware
+        // Here we simulate sensor readings
+        
+        // Update GPS
+        this.gps.update();
+        
+        // Update IMU
+        this.imu.update();
+        
+        // Update barometer
+        this.barometer.update();
+        
+        // Update camera
+        this.camera.update();
+        
+        // Update lidar
+        this.lidar.update();
+        
+        // Update state from sensors
+        this.position = this.gps.getPosition();
+        this.velocity = this.gps.getVelocity();
+        this.attitude = this.imu.getOrientation();
+        this.angularVelocity = this.imu.getAngularVelocity();
+        this.altitude = this.barometer.getAltitude();
+        
+        io.println("Position: " + this.position.toString());
+        io.println("Altitude: " + this.altitude.toString() + " m");
+    }
+    
+    /**
+     * Load a mission path from waypoints
+     */
+    public func loadMission(waypoints: array<Waypoint>) {
+        this.missionPath = Path();
+        
+        for (var i = 0; i < waypoints.length; i++) {
+            this.missionPath.addWaypoint(waypoints[i]);
+        }
+        
+        this.currentWaypointIndex = 0;
+        this.missionComplete = false;
+        
+        io.println("Mission loaded with " + waypoints.length.toString() + " waypoints");
+    }
+    
+    /**
+     * Check if the current waypoint has been reached
+     */
+    public func isWaypointReached() -> bool {
+        if (this.currentWaypointIndex >= this.missionPath.getWaypointCount()) {
+            return false;
+        }
+        
+        var waypoint = this.missionPath.getWaypoint(this.currentWaypointIndex);
+        var waypointPosition = waypoint.getPosition();
+        
+        // Check if we're within the waypoint radius
+        var distance = this.position.distance(waypointPosition);
+        
+        // Also check altitude if specified
+        var altitudeOk = true;
+        if (waypoint.getAltitude() > 0) {
+            altitudeOk = Math.abs(this.altitude - waypoint.getAltitude()) < 1.0;
+        }
+        
+        return distance < WAYPOINT_RADIUS && altitudeOk;
+    }
+    
+    /**
+     * Move to the next waypoint in the mission
+     */
+    public func nextWaypoint() {
+        this.currentWaypointIndex++;
+        
+        if (this.currentWaypointIndex >= this.missionPath.getWaypointCount()) {
+            io.println("Mission complete!");
+            this.missionComplete = true;
+        } else {
+            var waypoint = this.missionPath.getWaypoint(this.currentWaypointIndex);
+            io.println("Moving to waypoint " + this.currentWaypointIndex.toString() + 
+                      ": " + waypoint.toString());
+        }
+    }
+    
+    /**
+     * Check for obstacles using lidar and camera
+     */
+    @safety_critical
+    public func detectObstacles() -> bool {
+        // Get point cloud from lidar
+        var pointCloud = this.lidar.getPointCloud();
+        
+        // Check for close points in the direction of travel
+        for (var i = 0; i < pointCloud.length; i++) {
+            var point = pointCloud[i];
+            var distance = point.magnitude();
+            
+            // If point is close and in our path
+            if (distance < 5.0) {
+                // Calculate angle between velocity and point
+                var angle = Math.acos(
+                    this.velocity.normalize().dot(point.normalize())
+                );
+                
+                // If point is in our path (angle < 30 degrees)
+                if (angle < Math.radians(30.0) && this.velocity.magnitude() > 0.5) {
+                    io.println("Obstacle detected at distance: " + distance.toString() + " m");
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Calculate avoidance vector when obstacle detected
+     */
+    public func calculateAvoidanceVector() -> vector3 {
+        // Get point cloud from lidar
+        var pointCloud = this.lidar.getPointCloud();
+        
+        // Find the closest point
+        var closestPoint = vector3(100.0, 100.0, 100.0);
+        var closestDistance = 100.0;
+        
+        for (var i = 0; i < pointCloud.length; i++) {
+            var point = pointCloud[i];
+            var distance = point.magnitude();
+            
+            if (distance < closestDistance) {
+                closestPoint = point;
+                closestDistance = distance;
+            }
+        }
+        
+        // Calculate avoidance vector (opposite direction from obstacle)
+        var avoidanceVector = closestPoint.normalize().multiply(-1.0);
+        
+        // Maintain current altitude
+        avoidanceVector.z = 0;
+        
+        // Scale by inverse of distance (closer obstacles cause stronger avoidance)
+        avoidanceVector = avoidanceVector.multiply(5.0 / Math.max(closestDistance, 1.0));
+        
+        return avoidanceVector;
+    }
+    
+    /**
+     * Update navigation to follow the mission path
+     */
+    public func updateNavigation() {
+        if (this.missionComplete) {
+            // Hover in place if mission is complete
+            this.targetPosition = this.position;
+            this.targetVelocity = vector3(0.0, 0.0, 0.0);
+            return;
+        }
+        
+        // Check if current waypoint reached
+        if (this.isWaypointReached()) {
+            this.nextWaypoint();
+            if (this.missionComplete) {
+                return;
+            }
+        }
+        
+        // Get current waypoint
+        var waypoint = this.missionPath.getWaypoint(this.currentWaypointIndex);
+        var waypointPosition = waypoint.getPosition();
+        
+        // Set target altitude if specified in waypoint
+        if (waypoint.getAltitude() > 0) {
+            waypointPosition.z = waypoint.getAltitude();
+        } else {
+            waypointPosition.z = SAFETY_ALTITUDE;
+        }
+        
+        // Check for obstacles
+        var avoidingObstacle = false;
+        if (this.detectObstacles()) {
+            // Calculate avoidance vector
+            var avoidanceVector = this.calculateAvoidanceVector();
+            
+            // Blend avoidance with waypoint direction
+            var waypointDirection = waypointPosition.subtract(this.position).normalize();
+            var blendedDirection = waypointDirection.add(avoidanceVector.multiply(2.0)).normalize();
+            
+            // Set intermediate target 5m away in the blended direction
+            this.targetPosition = this.position.add(blendedDirection.multiply(5.0));
+            
+            // Maintain altitude
+            this.targetPosition.z = this.position.z;
+            
+            avoidingObstacle = true;
+            io.println("Avoiding obstacle, intermediate target: " + this.targetPosition.toString());
+        } else {
+            // No obstacles, head directly to waypoint
+            this.targetPosition = waypointPosition;
+        }
+        
+        // Calculate desired velocity (proportional to distance, up to max velocity)
+        var direction = this.targetPosition.subtract(this.position);
+        var distance = direction.magnitude();
+        
+        // Scale velocity based on distance (slow down as we approach waypoint)
+        var speed = Math.min(MAX_VELOCITY, distance / 2.0);
+        
+        // If we're avoiding an obstacle, limit speed
+        if (avoidingObstacle) {
+            speed = Math.min(speed, 2.0);
+        }
+        
+        this.targetVelocity = direction.normalize().multiply(speed);
+        
+        // If we're close to the waypoint, slow down
+        if (distance < WAYPOINT_RADIUS * 2.0) {
+            this.targetVelocity = this.targetVelocity.multiply(distance / (WAYPOINT_RADIUS * 2.0));
+        }
+    }
+    
+    /**
+     * Calculate control outputs based on current state and targets
+     */
+    public func calculateControlOutputs() {
+        // Calculate trajectory control (position and velocity)
+        var accelerationCommand = this.trajectoryController.update(
+            this.position,
+            this.velocity,
+            this.targetPosition,
+            this.targetVelocity
+        );
+        
+        // Limit acceleration
+        var accelMagnitude = accelerationCommand.magnitude();
+        if (accelMagnitude > MAX_ACCELERATION) {
+            accelerationCommand = accelerationCommand.multiply(MAX_ACCELERATION / accelMagnitude);
+        }
+        
+        // Calculate desired attitude from acceleration command
+        // We need to orient the drone to achieve the desired acceleration
+        
+        // First, ensure we maintain altitude with thrust
+        var thrust = DRONE_MASS * (9.81 + accelerationCommand.z);
+        
+        // Calculate desired roll and pitch to achieve horizontal acceleration
+        var horizontalAccel = vector2(accelerationCommand.x, accelerationCommand.y);
+        var horizontalAccelMagnitude = horizontalAccel.magnitude();
+        
+        // Calculate roll and pitch angles
+        var pitchAngle = Math.asin(accelerationCommand.x / 9.81);
+        var rollAngle = Math.asin(-accelerationCommand.y / 9.81);
+        
+        // Limit angles to reasonable values
+        pitchAngle = Math.clamp(pitchAngle, -0.5, 0.5);  // About 30 degrees
+        rollAngle = Math.clamp(rollAngle, -0.5, 0.5);    // About 30 degrees
+        
+        // Get current waypoint for heading
+        var yawAngle = 0.0;
+        if (!this.missionComplete && this.currentWaypointIndex < this.missionPath.getWaypointCount()) {
+            var waypoint = this.missionPath.getWaypoint(this.currentWaypointIndex);
+            if (waypoint.getHeading() != 0.0) {
+                yawAngle = waypoint.getHeading();
+            } else {
+                // Calculate heading to waypoint
+                var waypointDirection = waypoint.getPosition().subtract(this.position);
+                yawAngle = Math.atan2(waypointDirection.y, waypointDirection.x);
+            }
+        }
+        
+        // Create target attitude quaternion from roll, pitch, yaw
+        this.targetAttitude = quaternion.fromEuler(rollAngle, pitchAngle, yawAngle);
+        
+        // Calculate attitude control (orientation)
+        var torqueCommand = this.attitudeController.update(
+            this.attitude,
+            this.angularVelocity,
+            this.targetAttitude
+        );
+        
+        // Apply control outputs to motors/actuators
+        this.applyControlOutputs(thrust, torqueCommand);
+    }
+    
+    /**
+     * Apply control outputs to motors/actuators
+     */
+    @deadline(2ms)
+    public func applyControlOutputs(thrust: float, torque: vector3) {
+        // In a real system, this would command actual motors
+        // Here we simulate the effect on the drone
+        
+        // Calculate time delta
+        var currentTime = time.now();
+        var dt = currentTime - this.lastUpdateTime;
+        this.lastUpdateTime = currentTime;
+        
+        // Update angular velocity based on torque
+        this.angularVelocity = this.angularVelocity.add(torque.multiply(dt));
+        
+        // Apply damping to angular velocity
+        this.angularVelocity = this.angularVelocity.multiply(0.95);
+        
+        // Update attitude based on angular velocity
+        var deltaRotation = quaternion.fromAxisAngle(
+            this.angularVelocity.normalize(),
+            this.angularVelocity.magnitude() * dt
+        );
+        this.attitude = this.attitude.multiply(deltaRotation).normalize();
+        
+        // Calculate acceleration in body frame
+        var bodyAcceleration = vector3(0.0, 0.0, thrust / DRONE_MASS - 9.81);
+        
+        // Convert to world frame using attitude
+        var worldAcceleration = this.attitude.rotateVector(bodyAcceleration);
+        
+        // Update velocity based on acceleration
+        this.velocity = this.velocity.add(worldAcceleration.multiply(dt));
+        
+        // Apply drag to velocity
+        this.velocity = this.velocity.multiply(0.98);
+        
+        // Update position based on velocity
+        this.position = this.position.add(this.velocity.multiply(dt));
+        
+        // Update altitude
+        this.altitude = this.position.z;
+        
+        io.println("Thrust: " + thrust.toString() + " N");
+        io.println("Attitude: " + this.attitude.toString());
+    }
+    
+    /**
+     * Main control loop
+     */
+    public func run() {
+        io.println("Starting drone control loop");
+        
+        while (true) {
+            // Update sensor readings
+            this.updateSensors();
+            
+            // Update navigation
+            this.updateNavigation();
+            
+            // Calculate control outputs
+            this.calculateControlOutputs();
+            
+            // Wait for next control cycle
+            time.sleep(CONTROL_PERIOD);
+        }
+    }
+}
+
+/**
+ * Main function
+ */
+func main() {
+    io.println("Drone Mission Control System Starting");
+    
+    // Create and initialize drone
+    var drone = Drone();
+    drone.initialize();
+    
+    // Create mission waypoints
+    var waypoints = array<Waypoint>[
+        Waypoint(vector3(0.0, 0.0, 0.0), 10.0, 0.0, 0.0),    // Takeoff
+        Waypoint(vector3(50.0, 0.0, 0.0), 20.0, 0.0, 5.0),   // First point
+        Waypoint(vector3(50.0, 50.0, 0.0), 20.0, 0.0, 5.0),  // Second point
+        Waypoint(vector3(0.0, 50.0, 0.0), 20.0, 0.0, 5.0),   // Third point
+        Waypoint(vector3(0.0, 0.0, 0.0), 10.0, 0.0, 2.0),    // Return to home
+        Waypoint(vector3(0.0, 0.0, 0.0), 0.0, 0.0, 0.0)      // Land
+    ];
+    
+    // Load mission
+    drone.loadMission(waypoints);
+    
+    // Run control loop
+    drone.run();
+}

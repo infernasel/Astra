@@ -1,0 +1,1211 @@
+/**
+ * ASTRA Profiler
+ * 
+ * A comprehensive tool for profiling and analyzing the performance of ASTRA programs.
+ * Features:
+ * - CPU usage profiling
+ * - Memory usage profiling
+ * - Function call profiling
+ * - Execution time measurement
+ * - Hot spot identification
+ * - Performance visualization
+ */
+
+import core.io;
+import core.file;
+import core.system;
+import core.time;
+import core.ui;
+import core.math;
+import vector;
+import matrix;
+
+// Profiling modes
+enum ProfilingMode {
+    CPU,
+    MEMORY,
+    FUNCTION_CALLS,
+    EXECUTION_TIME,
+    COMPREHENSIVE
+}
+
+/**
+ * Function call information
+ */
+class FunctionCall {
+    public name: string;
+    public start_time: float;
+    public end_time: float;
+    public duration: float;
+    public parent: FunctionCall?;
+    public children: array<FunctionCall>;
+    public memory_before: int;
+    public memory_after: int;
+    public memory_delta: int;
+    public cpu_usage: float;
+    public call_count: int;
+    
+    public func constructor(name: string, start_time: float, parent: FunctionCall? = null) {
+        this.name = name;
+        this.start_time = start_time;
+        this.end_time = 0.0;
+        this.duration = 0.0;
+        this.parent = parent;
+        this.children = array<FunctionCall>[];
+        this.memory_before = 0;
+        this.memory_after = 0;
+        this.memory_delta = 0;
+        this.cpu_usage = 0.0;
+        this.call_count = 1;
+    }
+    
+    public func end(end_time: float) -> void {
+        this.end_time = end_time;
+        this.duration = end_time - this.start_time;
+    }
+    
+    public func add_child(child: FunctionCall) -> void {
+        this.children.push(child);
+    }
+    
+    public func set_memory_usage(before: int, after: int) -> void {
+        this.memory_before = before;
+        this.memory_after = after;
+        this.memory_delta = after - before;
+    }
+    
+    public func set_cpu_usage(usage: float) -> void {
+        this.cpu_usage = usage;
+    }
+    
+    public func increment_call_count() -> void {
+        this.call_count++;
+    }
+    
+    public func get_total_duration() -> float {
+        return this.duration;
+    }
+    
+    public func get_self_duration() -> float {
+        var children_duration = 0.0;
+        for (var i = 0; i < this.children.length; i++) {
+            children_duration += this.children[i].duration;
+        }
+        return this.duration - children_duration;
+    }
+    
+    public func get_percentage_of_parent() -> float {
+        if (this.parent == null) {
+            return 100.0;
+        }
+        
+        return (this.duration / this.parent.duration) * 100.0;
+    }
+    
+    public func get_percentage_of_total(total_duration: float) -> float {
+        return (this.duration / total_duration) * 100.0;
+    }
+    
+    public func to_string(indent: int = 0) -> string {
+        var result = "";
+        
+        // Add indentation
+        for (var i = 0; i < indent; i++) {
+            result += "  ";
+        }
+        
+        // Add function name and timing information
+        result += this.name + ": " + this.duration.toString() + "ms";
+        
+        // Add call count if more than 1
+        if (this.call_count > 1) {
+            result += " (" + this.call_count.toString() + " calls)";
+        }
+        
+        // Add percentage of parent
+        if (this.parent != null) {
+            result += " (" + this.get_percentage_of_parent().toFixed(2) + "% of parent)";
+        }
+        
+        // Add memory usage if available
+        if (this.memory_delta != 0) {
+            result += " [Memory: " + (this.memory_delta > 0 ? "+" : "") + this.memory_delta.toString() + " bytes]";
+        }
+        
+        // Add CPU usage if available
+        if (this.cpu_usage > 0.0) {
+            result += " [CPU: " + this.cpu_usage.toFixed(2) + "%]";
+        }
+        
+        // Add children recursively
+        for (var i = 0; i < this.children.length; i++) {
+            result += "\n" + this.children[i].to_string(indent + 1);
+        }
+        
+        return result;
+    }
+}
+
+/**
+ * Memory snapshot
+ */
+class MemorySnapshot {
+    public timestamp: float;
+    public total_memory: int;
+    public used_memory: int;
+    public free_memory: int;
+    public heap_memory: int;
+    public stack_memory: int;
+    
+    public func constructor(timestamp: float, total: int, used: int, free: int, heap: int, stack: int) {
+        this.timestamp = timestamp;
+        this.total_memory = total;
+        this.used_memory = used;
+        this.free_memory = free;
+        this.heap_memory = heap;
+        this.stack_memory = stack;
+    }
+    
+    public func to_string() -> string {
+        return "Time: " + this.timestamp.toString() + "ms, " +
+               "Total: " + this.total_memory.toString() + " bytes, " +
+               "Used: " + this.used_memory.toString() + " bytes, " +
+               "Free: " + this.free_memory.toString() + " bytes, " +
+               "Heap: " + this.heap_memory.toString() + " bytes, " +
+               "Stack: " + this.stack_memory.toString() + " bytes";
+    }
+}
+
+/**
+ * CPU snapshot
+ */
+class CPUSnapshot {
+    public timestamp: float;
+    public total_usage: float;
+    public user_usage: float;
+    public system_usage: float;
+    public thread_count: int;
+    public context_switches: int;
+    
+    public func constructor(timestamp: float, total: float, user: float, system: float, threads: int, switches: int) {
+        this.timestamp = timestamp;
+        this.total_usage = total;
+        this.user_usage = user;
+        this.system_usage = system;
+        this.thread_count = threads;
+        this.context_switches = switches;
+    }
+    
+    public func to_string() -> string {
+        return "Time: " + this.timestamp.toString() + "ms, " +
+               "Total CPU: " + this.total_usage.toFixed(2) + "%, " +
+               "User: " + this.user_usage.toFixed(2) + "%, " +
+               "System: " + this.system_usage.toFixed(2) + "%, " +
+               "Threads: " + this.thread_count.toString() + ", " +
+               "Context Switches: " + this.context_switches.toString();
+    }
+}
+
+/**
+ * Hot spot information
+ */
+class HotSpot {
+    public function_name: string;
+    public file_name: string;
+    public line_number: int;
+    public total_time: float;
+    public self_time: float;
+    public call_count: int;
+    public percentage: float;
+    
+    public func constructor(name: string, file: string, line: int, total: float, self_time: float, calls: int, percentage: float) {
+        this.function_name = name;
+        this.file_name = file;
+        this.line_number = line;
+        this.total_time = total;
+        this.self_time = self_time;
+        this.call_count = calls;
+        this.percentage = percentage;
+    }
+    
+    public func to_string() -> string {
+        return this.function_name + " (" + this.file_name + ":" + this.line_number.toString() + "): " +
+               this.total_time.toString() + "ms total, " +
+               this.self_time.toString() + "ms self, " +
+               this.call_count.toString() + " calls, " +
+               this.percentage.toFixed(2) + "% of total";
+    }
+}
+
+/**
+ * Profiling result
+ */
+class ProfilingResult {
+    public start_time: float;
+    public end_time: float;
+    public total_duration: float;
+    public root_call: FunctionCall;
+    public memory_snapshots: array<MemorySnapshot>;
+    public cpu_snapshots: array<CPUSnapshot>;
+    public hot_spots: array<HotSpot>;
+    public call_graph: string;
+    
+    public func constructor(start_time: float) {
+        this.start_time = start_time;
+        this.end_time = 0.0;
+        this.total_duration = 0.0;
+        this.root_call = FunctionCall("root", start_time);
+        this.memory_snapshots = array<MemorySnapshot>[];
+        this.cpu_snapshots = array<CPUSnapshot>[];
+        this.hot_spots = array<HotSpot>[];
+        this.call_graph = "";
+    }
+    
+    public func end(end_time: float) -> void {
+        this.end_time = end_time;
+        this.total_duration = end_time - this.start_time;
+        this.root_call.end(end_time);
+    }
+    
+    public func add_memory_snapshot(snapshot: MemorySnapshot) -> void {
+        this.memory_snapshots.push(snapshot);
+    }
+    
+    public func add_cpu_snapshot(snapshot: CPUSnapshot) -> void {
+        this.cpu_snapshots.push(snapshot);
+    }
+    
+    public func add_hot_spot(hot_spot: HotSpot) -> void {
+        this.hot_spots.push(hot_spot);
+    }
+    
+    public func set_call_graph(graph: string) -> void {
+        this.call_graph = graph;
+    }
+    
+    public func get_peak_memory_usage() -> int {
+        var peak = 0;
+        for (var i = 0; i < this.memory_snapshots.length; i++) {
+            if (this.memory_snapshots[i].used_memory > peak) {
+                peak = this.memory_snapshots[i].used_memory;
+            }
+        }
+        return peak;
+    }
+    
+    public func get_average_cpu_usage() -> float {
+        if (this.cpu_snapshots.length == 0) {
+            return 0.0;
+        }
+        
+        var total = 0.0;
+        for (var i = 0; i < this.cpu_snapshots.length; i++) {
+            total += this.cpu_snapshots[i].total_usage;
+        }
+        return total / this.cpu_snapshots.length as float;
+    }
+    
+    public func get_top_hot_spots(count: int = 10) -> array<HotSpot> {
+        // Sort hot spots by total time (descending)
+        var sorted = this.hot_spots.clone();
+        for (var i = 0; i < sorted.length - 1; i++) {
+            for (var j = i + 1; j < sorted.length; j++) {
+                if (sorted[i].total_time < sorted[j].total_time) {
+                    var temp = sorted[i];
+                    sorted[i] = sorted[j];
+                    sorted[j] = temp;
+                }
+            }
+        }
+        
+        // Return top N hot spots
+        var result = array<HotSpot>[];
+        for (var i = 0; i < Math.min(count, sorted.length); i++) {
+            result.push(sorted[i]);
+        }
+        return result;
+    }
+    
+    public func to_string() -> string {
+        var result = "Profiling Result\n";
+        result += "===============\n\n";
+        
+        result += "Total Duration: " + this.total_duration.toString() + "ms\n";
+        result += "Peak Memory Usage: " + this.get_peak_memory_usage().toString() + " bytes\n";
+        result += "Average CPU Usage: " + this.get_average_cpu_usage().toFixed(2) + "%\n\n";
+        
+        result += "Call Tree:\n";
+        result += this.root_call.to_string() + "\n\n";
+        
+        result += "Top Hot Spots:\n";
+        var top_hot_spots = this.get_top_hot_spots(5);
+        for (var i = 0; i < top_hot_spots.length; i++) {
+            result += (i + 1).toString() + ". " + top_hot_spots[i].to_string() + "\n";
+        }
+        
+        return result;
+    }
+    
+    public func generate_report(output_path: string) -> bool {
+        var report = "# ASTRA Profiling Report\n\n";
+        report += "Generated on: " + time.now().toString() + "\n\n";
+        
+        report += "## Summary\n\n";
+        report += "- Total Duration: " + this.total_duration.toString() + "ms\n";
+        report += "- Peak Memory Usage: " + this.get_peak_memory_usage().toString() + " bytes\n";
+        report += "- Average CPU Usage: " + this.get_average_cpu_usage().toFixed(2) + "%\n\n";
+        
+        report += "## Hot Spots\n\n";
+        report += "| Function | File | Line | Total Time (ms) | Self Time (ms) | Calls | Percentage |\n";
+        report += "|----------|------|------|----------------|----------------|-------|------------|\n";
+        
+        var top_hot_spots = this.get_top_hot_spots(10);
+        for (var i = 0; i < top_hot_spots.length; i++) {
+            var spot = top_hot_spots[i];
+            report += "| " + spot.function_name + " | " + spot.file_name + " | " + spot.line_number.toString() + " | " +
+                     spot.total_time.toString() + " | " + spot.self_time.toString() + " | " +
+                     spot.call_count.toString() + " | " + spot.percentage.toFixed(2) + "% |\n";
+        }
+        
+        report += "\n## Memory Usage\n\n";
+        report += "![Memory Usage Chart](memory_chart.png)\n\n";
+        report += "| Time (ms) | Total (bytes) | Used (bytes) | Free (bytes) | Heap (bytes) | Stack (bytes) |\n";
+        report += "|-----------|---------------|--------------|--------------|--------------|---------------|\n";
+        
+        // Include a subset of memory snapshots to keep the report manageable
+        var step = Math.max(1, this.memory_snapshots.length / 20);
+        for (var i = 0; i < this.memory_snapshots.length; i += step) {
+            var snapshot = this.memory_snapshots[i];
+            report += "| " + snapshot.timestamp.toString() + " | " +
+                     snapshot.total_memory.toString() + " | " +
+                     snapshot.used_memory.toString() + " | " +
+                     snapshot.free_memory.toString() + " | " +
+                     snapshot.heap_memory.toString() + " | " +
+                     snapshot.stack_memory.toString() + " |\n";
+        }
+        
+        report += "\n## CPU Usage\n\n";
+        report += "![CPU Usage Chart](cpu_chart.png)\n\n";
+        report += "| Time (ms) | Total CPU (%) | User CPU (%) | System CPU (%) | Threads | Context Switches |\n";
+        report += "|-----------|---------------|--------------|----------------|---------|------------------|\n";
+        
+        // Include a subset of CPU snapshots to keep the report manageable
+        step = Math.max(1, this.cpu_snapshots.length / 20);
+        for (var i = 0; i < this.cpu_snapshots.length; i += step) {
+            var snapshot = this.cpu_snapshots[i];
+            report += "| " + snapshot.timestamp.toString() + " | " +
+                     snapshot.total_usage.toFixed(2) + " | " +
+                     snapshot.user_usage.toFixed(2) + " | " +
+                     snapshot.system_usage.toFixed(2) + " | " +
+                     snapshot.thread_count.toString() + " | " +
+                     snapshot.context_switches.toString() + " |\n";
+        }
+        
+        report += "\n## Call Graph\n\n";
+        report += "```\n" + this.call_graph + "\n```\n";
+        
+        // Write report to file
+        return file.write_text(output_path, report);
+    }
+}
+
+/**
+ * Profiler class
+ */
+class Profiler {
+    private mode: ProfilingMode;
+    private sampling_interval: float;
+    private is_running: bool;
+    private start_time: float;
+    private current_result: ProfilingResult?;
+    private current_function: FunctionCall?;
+    private function_map: Map<string, FunctionCall>;
+    private memory_timer: any;
+    private cpu_timer: any;
+    
+    public func constructor(mode: ProfilingMode = ProfilingMode.COMPREHENSIVE, sampling_interval: float = 100.0) {
+        this.mode = mode;
+        this.sampling_interval = sampling_interval;
+        this.is_running = false;
+        this.start_time = 0.0;
+        this.current_result = null;
+        this.current_function = null;
+        this.function_map = Map<string, FunctionCall>();
+        this.memory_timer = null;
+        this.cpu_timer = null;
+    }
+    
+    public func start() -> bool {
+        if (this.is_running) {
+            io.println("Profiler is already running");
+            return false;
+        }
+        
+        this.is_running = true;
+        this.start_time = time.now().toMilliseconds();
+        this.current_result = ProfilingResult(this.start_time);
+        this.current_function = this.current_result.root_call;
+        this.function_map = Map<string, FunctionCall>();
+        
+        // Start memory sampling if needed
+        if (this.mode == ProfilingMode.MEMORY || this.mode == ProfilingMode.COMPREHENSIVE) {
+            this.start_memory_sampling();
+        }
+        
+        // Start CPU sampling if needed
+        if (this.mode == ProfilingMode.CPU || this.mode == ProfilingMode.COMPREHENSIVE) {
+            this.start_cpu_sampling();
+        }
+        
+        io.println("Profiler started");
+        return true;
+    }
+    
+    public func stop() -> ProfilingResult? {
+        if (!this.is_running) {
+            io.println("Profiler is not running");
+            return null;
+        }
+        
+        this.is_running = false;
+        var end_time = time.now().toMilliseconds();
+        
+        // Stop memory sampling if needed
+        if (this.mode == ProfilingMode.MEMORY || this.mode == ProfilingMode.COMPREHENSIVE) {
+            this.stop_memory_sampling();
+        }
+        
+        // Stop CPU sampling if needed
+        if (this.mode == ProfilingMode.CPU || this.mode == ProfilingMode.COMPREHENSIVE) {
+            this.stop_cpu_sampling();
+        }
+        
+        // Finalize result
+        if (this.current_result != null) {
+            this.current_result.end(end_time);
+            
+            // Generate call graph
+            this.generate_call_graph();
+            
+            // Identify hot spots
+            this.identify_hot_spots();
+            
+            io.println("Profiler stopped");
+            return this.current_result;
+        }
+        
+        return null;
+    }
+    
+    public func enter_function(name: string, file: string, line: int) -> void {
+        if (!this.is_running || this.current_result == null || this.current_function == null) {
+            return;
+        }
+        
+        var now = time.now().toMilliseconds();
+        var memory_before = 0;
+        
+        // Get memory usage if needed
+        if (this.mode == ProfilingMode.MEMORY || this.mode == ProfilingMode.COMPREHENSIVE) {
+            memory_before = this.get_current_memory_usage();
+        }
+        
+        // Create function call
+        var func_call = FunctionCall(name, now, this.current_function);
+        func_call.memory_before = memory_before;
+        
+        // Add to parent
+        this.current_function.add_child(func_call);
+        
+        // Update current function
+        this.current_function = func_call;
+        
+        // Add to function map
+        var key = file + ":" + line.toString() + ":" + name;
+        if (this.function_map.has(key)) {
+            this.function_map.get(key).increment_call_count();
+        } else {
+            this.function_map.set(key, func_call);
+        }
+    }
+    
+    public func exit_function(name: string) -> void {
+        if (!this.is_running || this.current_result == null || this.current_function == null) {
+            return;
+        }
+        
+        var now = time.now().toMilliseconds();
+        var memory_after = 0;
+        
+        // Get memory usage if needed
+        if (this.mode == ProfilingMode.MEMORY || this.mode == ProfilingMode.COMPREHENSIVE) {
+            memory_after = this.get_current_memory_usage();
+        }
+        
+        // Update function call
+        this.current_function.end(now);
+        this.current_function.memory_after = memory_after;
+        this.current_function.memory_delta = memory_after - this.current_function.memory_before;
+        
+        // Update current function
+        if (this.current_function.parent != null) {
+            this.current_function = this.current_function.parent;
+        }
+    }
+    
+    private func start_memory_sampling() -> void {
+        // Take initial memory snapshot
+        this.take_memory_snapshot();
+        
+        // Start periodic sampling
+        this.memory_timer = time.set_interval(() => {
+            this.take_memory_snapshot();
+        }, this.sampling_interval);
+    }
+    
+    private func stop_memory_sampling() -> void {
+        if (this.memory_timer != null) {
+            time.clear_interval(this.memory_timer);
+            this.memory_timer = null;
+        }
+        
+        // Take final memory snapshot
+        this.take_memory_snapshot();
+    }
+    
+    private func take_memory_snapshot() -> void {
+        if (this.current_result == null) {
+            return;
+        }
+        
+        var now = time.now().toMilliseconds();
+        var total = 0;
+        var used = 0;
+        var free = 0;
+        var heap = 0;
+        var stack = 0;
+        
+        // Get memory usage
+        var memory_info = this.get_memory_info();
+        total = memory_info.total;
+        used = memory_info.used;
+        free = memory_info.free;
+        heap = memory_info.heap;
+        stack = memory_info.stack;
+        
+        // Create snapshot
+        var snapshot = MemorySnapshot(now - this.start_time, total, used, free, heap, stack);
+        
+        // Add to result
+        this.current_result.add_memory_snapshot(snapshot);
+    }
+    
+    private func start_cpu_sampling() -> void {
+        // Take initial CPU snapshot
+        this.take_cpu_snapshot();
+        
+        // Start periodic sampling
+        this.cpu_timer = time.set_interval(() => {
+            this.take_cpu_snapshot();
+        }, this.sampling_interval);
+    }
+    
+    private func stop_cpu_sampling() -> void {
+        if (this.cpu_timer != null) {
+            time.clear_interval(this.cpu_timer);
+            this.cpu_timer = null;
+        }
+        
+        // Take final CPU snapshot
+        this.take_cpu_snapshot();
+    }
+    
+    private func take_cpu_snapshot() -> void {
+        if (this.current_result == null) {
+            return;
+        }
+        
+        var now = time.now().toMilliseconds();
+        var total = 0.0;
+        var user = 0.0;
+        var system = 0.0;
+        var threads = 0;
+        var switches = 0;
+        
+        // Get CPU usage
+        var cpu_info = this.get_cpu_info();
+        total = cpu_info.total;
+        user = cpu_info.user;
+        system = cpu_info.system;
+        threads = cpu_info.threads;
+        switches = cpu_info.switches;
+        
+        // Create snapshot
+        var snapshot = CPUSnapshot(now - this.start_time, total, user, system, threads, switches);
+        
+        // Add to result
+        this.current_result.add_cpu_snapshot(snapshot);
+    }
+    
+    private func get_current_memory_usage() -> int {
+        // In a real implementation, this would use system APIs to get memory usage
+        // For this example, we'll return a simulated value
+        return system.get_memory_usage();
+    }
+    
+    private func get_memory_info() -> any {
+        // In a real implementation, this would use system APIs to get detailed memory info
+        // For this example, we'll return simulated values
+        var total = system.get_total_memory();
+        var used = system.get_memory_usage();
+        var free = total - used;
+        var heap = used * 0.8 as int;
+        var stack = used * 0.2 as int;
+        
+        return {
+            total: total,
+            used: used,
+            free: free,
+            heap: heap,
+            stack: stack
+        };
+    }
+    
+    private func get_cpu_info() -> any {
+        // In a real implementation, this would use system APIs to get CPU usage
+        // For this example, we'll return simulated values
+        var total = system.get_cpu_usage();
+        var user = total * 0.7;
+        var system_usage = total * 0.3;
+        var threads = system.get_thread_count();
+        var switches = system.get_context_switches();
+        
+        return {
+            total: total,
+            user: user,
+            system: system_usage,
+            threads: threads,
+            switches: switches
+        };
+    }
+    
+    private func generate_call_graph() -> void {
+        if (this.current_result == null) {
+            return;
+        }
+        
+        var graph = "Call Graph:\n";
+        graph += this.generate_call_graph_node(this.current_result.root_call, 0);
+        
+        this.current_result.set_call_graph(graph);
+    }
+    
+    private func generate_call_graph_node(node: FunctionCall, depth: int) -> string {
+        var result = "";
+        
+        // Add indentation
+        for (var i = 0; i < depth; i++) {
+            result += "  ";
+        }
+        
+        // Add node information
+        result += node.name + " (" + node.duration.toString() + "ms";
+        
+        if (node.call_count > 1) {
+            result += ", " + node.call_count.toString() + " calls";
+        }
+        
+        result += ")";
+        
+        // Add children
+        for (var i = 0; i < node.children.length; i++) {
+            result += "\n" + this.generate_call_graph_node(node.children[i], depth + 1);
+        }
+        
+        return result;
+    }
+    
+    private func identify_hot_spots() -> void {
+        if (this.current_result == null) {
+            return;
+        }
+        
+        // Iterate through function map
+        var keys = this.function_map.keys();
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
+            var parts = key.split(":");
+            var file = parts[0];
+            var line = parseInt(parts[1]);
+            var name = parts[2];
+            
+            var func = this.function_map.get(key);
+            var total_time = func.get_total_duration();
+            var self_time = func.get_self_duration();
+            var call_count = func.call_count;
+            var percentage = func.get_percentage_of_total(this.current_result.total_duration);
+            
+            var hot_spot = HotSpot(name, file, line, total_time, self_time, call_count, percentage);
+            this.current_result.add_hot_spot(hot_spot);
+        }
+    }
+    
+    public func is_profiling() -> bool {
+        return this.is_running;
+    }
+    
+    public func get_mode() -> ProfilingMode {
+        return this.mode;
+    }
+    
+    public func set_mode(mode: ProfilingMode) -> void {
+        if (!this.is_running) {
+            this.mode = mode;
+        }
+    }
+    
+    public func get_sampling_interval() -> float {
+        return this.sampling_interval;
+    }
+    
+    public func set_sampling_interval(interval: float) -> void {
+        if (!this.is_running) {
+            this.sampling_interval = interval;
+        }
+    }
+}
+
+/**
+ * Profiler manager class
+ */
+class ProfilerManager {
+    private profiler: Profiler;
+    private results: array<ProfilingResult>;
+    
+    public func constructor() {
+        this.profiler = Profiler();
+        this.results = array<ProfilingResult>[];
+    }
+    
+    public func start_profiling(mode: ProfilingMode = ProfilingMode.COMPREHENSIVE, sampling_interval: float = 100.0) -> bool {
+        this.profiler.set_mode(mode);
+        this.profiler.set_sampling_interval(sampling_interval);
+        return this.profiler.start();
+    }
+    
+    public func stop_profiling() -> ProfilingResult? {
+        var result = this.profiler.stop();
+        if (result != null) {
+            this.results.push(result);
+        }
+        return result;
+    }
+    
+    public func profile_function(func: () -> void, mode: ProfilingMode = ProfilingMode.COMPREHENSIVE, sampling_interval: float = 100.0) -> ProfilingResult? {
+        this.start_profiling(mode, sampling_interval);
+        
+        try {
+            func();
+        } catch (e) {
+            io.println("Error during profiling: " + e.toString());
+        }
+        
+        return this.stop_profiling();
+    }
+    
+    public func get_results() -> array<ProfilingResult> {
+        return this.results;
+    }
+    
+    public func get_last_result() -> ProfilingResult? {
+        if (this.results.length > 0) {
+            return this.results[this.results.length - 1];
+        }
+        return null;
+    }
+    
+    public func clear_results() -> void {
+        this.results = array<ProfilingResult>[];
+    }
+    
+    public func generate_report(result_index: int = -1, output_path: string = "profiling_report.md") -> bool {
+        var result: ProfilingResult?;
+        
+        if (result_index < 0) {
+            result = this.get_last_result();
+        } else if (result_index < this.results.length) {
+            result = this.results[result_index];
+        } else {
+            io.println("Invalid result index");
+            return false;
+        }
+        
+        if (result == null) {
+            io.println("No profiling result available");
+            return false;
+        }
+        
+        return result.generate_report(output_path);
+    }
+    
+    public func compare_results(index1: int, index2: int) -> string {
+        if (index1 < 0 || index1 >= this.results.length || index2 < 0 || index2 >= this.results.length) {
+            return "Invalid result indices";
+        }
+        
+        var result1 = this.results[index1];
+        var result2 = this.results[index2];
+        
+        var comparison = "Profiling Results Comparison\n";
+        comparison += "==========================\n\n";
+        
+        comparison += "Total Duration:\n";
+        comparison += "- Result 1: " + result1.total_duration.toString() + "ms\n";
+        comparison += "- Result 2: " + result2.total_duration.toString() + "ms\n";
+        comparison += "- Difference: " + (result2.total_duration - result1.total_duration).toString() + "ms (" +
+                     ((result2.total_duration - result1.total_duration) / result1.total_duration * 100.0).toFixed(2) + "%)\n\n";
+        
+        comparison += "Peak Memory Usage:\n";
+        comparison += "- Result 1: " + result1.get_peak_memory_usage().toString() + " bytes\n";
+        comparison += "- Result 2: " + result2.get_peak_memory_usage().toString() + " bytes\n";
+        comparison += "- Difference: " + (result2.get_peak_memory_usage() - result1.get_peak_memory_usage()).toString() + " bytes (" +
+                     ((result2.get_peak_memory_usage() - result1.get_peak_memory_usage()) / result1.get_peak_memory_usage() * 100.0).toFixed(2) + "%)\n\n";
+        
+        comparison += "Average CPU Usage:\n";
+        comparison += "- Result 1: " + result1.get_average_cpu_usage().toFixed(2) + "%\n";
+        comparison += "- Result 2: " + result2.get_average_cpu_usage().toFixed(2) + "%\n";
+        comparison += "- Difference: " + (result2.get_average_cpu_usage() - result1.get_average_cpu_usage()).toFixed(2) + "% (" +
+                     ((result2.get_average_cpu_usage() - result1.get_average_cpu_usage()) / result1.get_average_cpu_usage() * 100.0).toFixed(2) + "%)\n\n";
+        
+        comparison += "Hot Spots Comparison:\n";
+        comparison += "| Function | Result 1 Time (ms) | Result 2 Time (ms) | Difference (ms) | Difference (%) |\n";
+        comparison += "|----------|-------------------|-------------------|----------------|---------------|\n";
+        
+        var hot_spots1 = result1.get_top_hot_spots(10);
+        var hot_spots2 = result2.get_top_hot_spots(10);
+        
+        // Create a map of function names to hot spots for result 2
+        var hot_spots2_map = Map<string, HotSpot>();
+        for (var i = 0; i < hot_spots2.length; i++) {
+            hot_spots2_map.set(hot_spots2[i].function_name, hot_spots2[i]);
+        }
+        
+        for (var i = 0; i < hot_spots1.length; i++) {
+            var spot1 = hot_spots1[i];
+            var spot2 = hot_spots2_map.get(spot1.function_name);
+            
+            if (spot2 != null) {
+                var time_diff = spot2.total_time - spot1.total_time;
+                var percent_diff = (time_diff / spot1.total_time * 100.0).toFixed(2);
+                
+                comparison += "| " + spot1.function_name + " | " +
+                             spot1.total_time.toString() + " | " +
+                             spot2.total_time.toString() + " | " +
+                             time_diff.toString() + " | " +
+                             percent_diff + "% |\n";
+            }
+        }
+        
+        return comparison;
+    }
+}
+
+/**
+ * Main function
+ */
+func main() {
+    // Create UI
+    var window = ui.Window("ASTRA Profiler", 800, 600);
+    
+    // Create profiler manager
+    var manager = ProfilerManager();
+    
+    // Create UI components
+    var mode_label = ui.Label("Profiling Mode:");
+    var mode_combo = ui.ComboBox();
+    mode_combo.addItem("CPU");
+    mode_combo.addItem("Memory");
+    mode_combo.addItem("Function Calls");
+    mode_combo.addItem("Execution Time");
+    mode_combo.addItem("Comprehensive");
+    mode_combo.setSelectedIndex(4);  // Default to Comprehensive
+    
+    var interval_label = ui.Label("Sampling Interval (ms):");
+    var interval_field = ui.TextField("100");
+    
+    var target_label = ui.Label("Target Program:");
+    var target_field = ui.TextField("");
+    var browse_button = ui.Button("Browse");
+    
+    var start_button = ui.Button("Start Profiling");
+    var stop_button = ui.Button("Stop Profiling");
+    stop_button.setEnabled(false);
+    
+    var results_label = ui.Label("Profiling Results:");
+    var results_list = ui.ListView();
+    
+    var details_button = ui.Button("View Details");
+    var report_button = ui.Button("Generate Report");
+    var compare_button = ui.Button("Compare Results");
+    var clear_button = ui.Button("Clear Results");
+    
+    // Add components to window
+    window.addComponent(mode_label);
+    window.addComponent(mode_combo);
+    window.addComponent(interval_label);
+    window.addComponent(interval_field);
+    window.addComponent(target_label);
+    window.addComponent(target_field);
+    window.addComponent(browse_button);
+    window.addComponent(start_button);
+    window.addComponent(stop_button);
+    window.addComponent(results_label);
+    window.addComponent(results_list);
+    window.addComponent(details_button);
+    window.addComponent(report_button);
+    window.addComponent(compare_button);
+    window.addComponent(clear_button);
+    
+    // Set button actions
+    browse_button.setAction(() => {
+        var path = ui.showFileDialog("Select Target Program", "", true);
+        if (path != "") {
+            target_field.setText(path);
+        }
+    });
+    
+    start_button.setAction(() => {
+        var target = target_field.getText();
+        if (target == "") {
+            ui.showMessageDialog("Error", "Please select a target program");
+            return;
+        }
+        
+        var mode = ProfilingMode.COMPREHENSIVE;
+        var mode_index = mode_combo.getSelectedIndex();
+        if (mode_index == 0) {
+            mode = ProfilingMode.CPU;
+        } else if (mode_index == 1) {
+            mode = ProfilingMode.MEMORY;
+        } else if (mode_index == 2) {
+            mode = ProfilingMode.FUNCTION_CALLS;
+        } else if (mode_index == 3) {
+            mode = ProfilingMode.EXECUTION_TIME;
+        }
+        
+        var interval = 100.0;
+        try {
+            interval = parseFloat(interval_field.getText());
+        } catch (e) {
+            ui.showMessageDialog("Error", "Invalid sampling interval");
+            return;
+        }
+        
+        if (manager.start_profiling(mode, interval)) {
+            start_button.setEnabled(false);
+            stop_button.setEnabled(true);
+            
+            // Run target program
+            system.execute(target);
+        }
+    });
+    
+    stop_button.setAction(() => {
+        var result = manager.stop_profiling();
+        if (result != null) {
+            start_button.setEnabled(true);
+            stop_button.setEnabled(false);
+            
+            // Add result to list
+            results_list.addItem("Result " + manager.get_results().length.toString() + ": " +
+                               result.total_duration.toString() + "ms, " +
+                               result.get_peak_memory_usage().toString() + " bytes, " +
+                               result.get_average_cpu_usage().toFixed(2) + "% CPU");
+        }
+    });
+    
+    details_button.setAction(() => {
+        var selected_index = results_list.getSelectedIndex();
+        if (selected_index < 0) {
+            ui.showMessageDialog("Error", "Please select a result");
+            return;
+        }
+        
+        var result = manager.get_results()[selected_index];
+        ui.showTextDialog("Profiling Result Details", result.to_string());
+    });
+    
+    report_button.setAction(() => {
+        var selected_index = results_list.getSelectedIndex();
+        if (selected_index < 0) {
+            ui.showMessageDialog("Error", "Please select a result");
+            return;
+        }
+        
+        var report_path = ui.showSaveDialog("Save Report", "", "profiling_report.md");
+        if (report_path != "") {
+            if (manager.generate_report(selected_index, report_path)) {
+                ui.showMessageDialog("Success", "Report generated successfully");
+            } else {
+                ui.showMessageDialog("Error", "Failed to generate report");
+            }
+        }
+    });
+    
+    compare_button.setAction(() => {
+        if (manager.get_results().length < 2) {
+            ui.showMessageDialog("Error", "Need at least two results to compare");
+            return;
+        }
+        
+        var dialog = ui.Dialog("Compare Results");
+        var result1_label = ui.Label("First Result:");
+        var result1_combo = ui.ComboBox();
+        var result2_label = ui.Label("Second Result:");
+        var result2_combo = ui.ComboBox();
+        
+        for (var i = 0; i < manager.get_results().length; i++) {
+            var result = manager.get_results()[i];
+            var item = "Result " + (i + 1).toString() + ": " +
+                     result.total_duration.toString() + "ms";
+            result1_combo.addItem(item);
+            result2_combo.addItem(item);
+        }
+        
+        if (manager.get_results().length >= 2) {
+            result2_combo.setSelectedIndex(1);
+        }
+        
+        dialog.addComponent(result1_label);
+        dialog.addComponent(result1_combo);
+        dialog.addComponent(result2_label);
+        dialog.addComponent(result2_combo);
+        
+        dialog.addButton("Compare", () => {
+            var index1 = result1_combo.getSelectedIndex();
+            var index2 = result2_combo.getSelectedIndex();
+            
+            if (index1 == index2) {
+                ui.showMessageDialog("Error", "Please select different results");
+                return;
+            }
+            
+            var comparison = manager.compare_results(index1, index2);
+            ui.showTextDialog("Comparison Results", comparison);
+            dialog.close();
+        });
+        
+        dialog.addButton("Cancel", () => {
+            dialog.close();
+        });
+        
+        dialog.show();
+    });
+    
+    clear_button.setAction(() => {
+        manager.clear_results();
+        results_list.clear();
+    });
+    
+    // Show window
+    window.show();
+    
+    // Start UI event loop
+    ui.runEventLoop();
+}
+
+// Command-line interface version
+func cli_main() {
+    io.println("ASTRA Profiler");
+    io.println("=============");
+    
+    var manager = ProfilerManager();
+    
+    if (system.args.length < 2) {
+        io.println("Usage: profiler <target_program> [options]");
+        io.println("Options:");
+        io.println("  --mode=<mode>       Profiling mode (cpu, memory, calls, time, comprehensive)");
+        io.println("  --interval=<ms>     Sampling interval in milliseconds");
+        io.println("  --report=<path>     Generate report at the specified path");
+        return;
+    }
+    
+    var target = system.args[1];
+    var mode = ProfilingMode.COMPREHENSIVE;
+    var interval = 100.0;
+    var report_path = "";
+    
+    // Parse options
+    for (var i = 2; i < system.args.length; i++) {
+        var arg = system.args[i];
+        
+        if (arg.startsWith("--mode=")) {
+            var mode_str = arg.substring(7);
+            if (mode_str == "cpu") {
+                mode = ProfilingMode.CPU;
+            } else if (mode_str == "memory") {
+                mode = ProfilingMode.MEMORY;
+            } else if (mode_str == "calls") {
+                mode = ProfilingMode.FUNCTION_CALLS;
+            } else if (mode_str == "time") {
+                mode = ProfilingMode.EXECUTION_TIME;
+            }
+        } else if (arg.startsWith("--interval=")) {
+            try {
+                interval = parseFloat(arg.substring(11));
+            } catch (e) {
+                io.println("Invalid interval: " + arg.substring(11));
+                return;
+            }
+        } else if (arg.startsWith("--report=")) {
+            report_path = arg.substring(9);
+        }
+    }
+    
+    io.println("Profiling target: " + target);
+    io.println("Mode: " + mode.toString());
+    io.println("Sampling interval: " + interval.toString() + "ms");
+    
+    // Start profiling
+    io.println("Starting profiler...");
+    manager.start_profiling(mode, interval);
+    
+    // Run target program
+    io.println("Running target program...");
+    system.execute(target);
+    
+    // Stop profiling
+    io.println("Stopping profiler...");
+    var result = manager.stop_profiling();
+    
+    if (result != null) {
+        io.println("\nProfiling Results:");
+        io.println("Total Duration: " + result.total_duration.toString() + "ms");
+        io.println("Peak Memory Usage: " + result.get_peak_memory_usage().toString() + " bytes");
+        io.println("Average CPU Usage: " + result.get_average_cpu_usage().toFixed(2) + "%");
+        
+        io.println("\nTop Hot Spots:");
+        var top_hot_spots = result.get_top_hot_spots(5);
+        for (var i = 0; i < top_hot_spots.length; i++) {
+            io.println((i + 1).toString() + ". " + top_hot_spots[i].to_string());
+        }
+        
+        if (report_path != "") {
+            io.println("\nGenerating report: " + report_path);
+            if (manager.generate_report(0, report_path)) {
+                io.println("Report generated successfully");
+            } else {
+                io.println("Failed to generate report");
+            }
+        }
+    } else {
+        io.println("No profiling results available");
+    }
+}
+
+// Check if running in GUI or CLI mode
+if (system.hasGUI()) {
+    main();
+} else {
+    cli_main();
+}

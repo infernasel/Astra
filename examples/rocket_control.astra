@@ -1,0 +1,861 @@
+/**
+ * ASTRA Example: Rocket Control System
+ * 
+ * This example demonstrates a comprehensive rocket control system
+ * including guidance, navigation, control, telemetry, and safety systems.
+ */
+
+import core.io;
+import core.time;
+import core.math;
+import core.system;
+import vector;
+import matrix;
+import quaternion;
+import orbital.mechanics;
+import navigation.guidance;
+import control.systems;
+import sensors;
+import telemetry;
+import safety;
+
+// Flight phases
+enum FlightPhase {
+    PREFLIGHT,
+    LIFTOFF,
+    ASCENT,
+    STAGE_SEPARATION,
+    COAST,
+    ORBITAL_INSERTION,
+    ORBIT,
+    DEORBIT,
+    REENTRY,
+    LANDING,
+    SAFING
+}
+
+// Rocket configuration
+struct RocketConfig {
+    // Physical properties
+    var dry_mass: float;                // Dry mass in kg
+    var propellant_mass: float;         // Propellant mass in kg
+    var length: float;                  // Length in meters
+    var diameter: float;                // Diameter in meters
+    var drag_coefficient: float;        // Drag coefficient
+    var reference_area: float;          // Reference area in m²
+    
+    // Engine properties
+    var engine_count: int;              // Number of engines
+    var engine_thrust: float;           // Thrust per engine in Newtons
+    var engine_isp_sl: float;           // Specific impulse at sea level in seconds
+    var engine_isp_vac: float;          // Specific impulse in vacuum in seconds
+    var gimbal_range: float;            // Maximum gimbal angle in degrees
+    
+    // Control properties
+    var control_frequency: float;       // Control loop frequency in Hz
+    var max_angle_of_attack: float;     // Maximum angle of attack in degrees
+    var max_acceleration: float;        // Maximum acceleration in m/s²
+    
+    // Mission parameters
+    var target_orbit_altitude: float;   // Target orbit altitude in meters
+    var target_orbit_inclination: float; // Target orbit inclination in degrees
+    var target_orbit_eccentricity: float; // Target orbit eccentricity
+}
+
+/**
+ * Main rocket control system class
+ */
+@safety_critical
+class RocketControlSystem {
+    // Configuration
+    private config: RocketConfig;
+    
+    // State
+    private flight_phase: FlightPhase;
+    private mission_time: float;
+    private position: Vector3;
+    private velocity: Vector3;
+    private acceleration: Vector3;
+    private attitude: Quaternion;
+    private angular_velocity: Vector3;
+    private mass: float;
+    private thrust: float;
+    private propellant_flow_rate: float;
+    
+    // Sensors
+    private imu: sensors.IMU;
+    private gps: sensors.GPS;
+    private barometer: sensors.Barometer;
+    private fuel_sensor: sensors.FuelSensor;
+    
+    // Control systems
+    private attitude_controller: control.AttitudeController;
+    private guidance_system: navigation.GuidanceSystem;
+    private navigation_system: navigation.NavigationSystem;
+    
+    // Telemetry
+    private telemetry_system: telemetry.TelemetrySystem;
+    
+    // Safety systems
+    private flight_termination_system: safety.FlightTerminationSystem;
+    private fault_detection_system: safety.FaultDetectionSystem;
+    
+    // Target orbit
+    private target_orbit: orbital.Orbit;
+    
+    /**
+     * Constructor
+     */
+    public func constructor(config: RocketConfig) {
+        this.config = config;
+        
+        // Initialize state
+        this.flight_phase = FlightPhase.PREFLIGHT;
+        this.mission_time = 0.0;
+        this.position = Vector3(0.0, 0.0, 0.0);
+        this.velocity = Vector3(0.0, 0.0, 0.0);
+        this.acceleration = Vector3(0.0, 0.0, 0.0);
+        this.attitude = Quaternion.identity();
+        this.angular_velocity = Vector3(0.0, 0.0, 0.0);
+        this.mass = config.dry_mass + config.propellant_mass;
+        this.thrust = 0.0;
+        this.propellant_flow_rate = 0.0;
+        
+        // Initialize sensors
+        this.imu = sensors.IMU(0.01, 0.001, 0.001);  // accel, gyro, mag accuracy
+        this.gps = sensors.GPS(2.5, 0.1);  // position, velocity accuracy
+        this.barometer = sensors.Barometer(10.0);  // altitude accuracy
+        this.fuel_sensor = sensors.FuelSensor(0.01);  // 1% accuracy
+        
+        // Initialize control systems
+        this.attitude_controller = control.AttitudeController(
+            roll_pid: control.PID(4.0, 0.2, 1.0),
+            pitch_pid: control.PID(4.0, 0.2, 1.0),
+            yaw_pid: control.PID(4.0, 0.2, 1.0)
+        );
+        
+        this.guidance_system = navigation.GuidanceSystem();
+        this.navigation_system = navigation.NavigationSystem();
+        
+        // Initialize telemetry
+        this.telemetry_system = telemetry.TelemetrySystem("Rocket-1", 10.0);  // 10 Hz telemetry
+        
+        // Initialize safety systems
+        this.flight_termination_system = safety.FlightTerminationSystem();
+        this.fault_detection_system = safety.FaultDetectionSystem();
+        
+        // Initialize target orbit
+        var earth = orbital.CelestialBody("Earth", 5.972e24, 6371000.0);
+        this.target_orbit = orbital.Orbit.circular(
+            earth,
+            config.target_orbit_altitude + earth.radius,
+            config.target_orbit_inclination
+        );
+    }
+    
+    /**
+     * Initialize the rocket control system
+     */
+    public func initialize() -> bool {
+        io.println("Initializing rocket control system...");
+        
+        // Initialize sensors
+        if (!this.imu.initialize()) {
+            io.println("Failed to initialize IMU");
+            return false;
+        }
+        
+        if (!this.gps.initialize()) {
+            io.println("Failed to initialize GPS");
+            return false;
+        }
+        
+        if (!this.barometer.initialize()) {
+            io.println("Failed to initialize barometer");
+            return false;
+        }
+        
+        if (!this.fuel_sensor.initialize()) {
+            io.println("Failed to initialize fuel sensor");
+            return false;
+        }
+        
+        // Initialize control systems
+        this.attitude_controller.initialize();
+        this.guidance_system.initialize();
+        this.navigation_system.initialize();
+        
+        // Initialize telemetry
+        this.telemetry_system.initialize();
+        
+        // Initialize safety systems
+        this.flight_termination_system.initialize();
+        this.fault_detection_system.initialize();
+        
+        io.println("Rocket control system initialized");
+        return true;
+    }
+    
+    /**
+     * Run pre-flight checks
+     */
+    @safety_critical
+    public func runPreflightChecks() -> bool {
+        io.println("Running pre-flight checks...");
+        
+        // Check sensors
+        if (!this.imu.selfTest()) {
+            io.println("IMU self-test failed");
+            return false;
+        }
+        
+        if (!this.gps.selfTest()) {
+            io.println("GPS self-test failed");
+            return false;
+        }
+        
+        if (!this.barometer.selfTest()) {
+            io.println("Barometer self-test failed");
+            return false;
+        }
+        
+        if (!this.fuel_sensor.selfTest()) {
+            io.println("Fuel sensor self-test failed");
+            return false;
+        }
+        
+        // Check propellant level
+        var propellant_level = this.fuel_sensor.read();
+        if (propellant_level < 0.99) {
+            io.println("Propellant level below threshold: " + (propellant_level * 100.0).toString() + "%");
+            return false;
+        }
+        
+        // Check flight termination system
+        if (!this.flight_termination_system.selfTest()) {
+            io.println("Flight termination system self-test failed");
+            return false;
+        }
+        
+        // Check communication links
+        if (!this.telemetry_system.checkLink()) {
+            io.println("Telemetry link check failed");
+            return false;
+        }
+        
+        io.println("All pre-flight checks passed");
+        return true;
+    }
+    
+    /**
+     * Start the mission
+     */
+    public func startMission() -> bool {
+        io.println("Starting mission...");
+        
+        // Verify pre-flight checks
+        if (this.flight_phase != FlightPhase.PREFLIGHT) {
+            io.println("Cannot start mission: not in PREFLIGHT phase");
+            return false;
+        }
+        
+        // Start telemetry
+        this.telemetry_system.start();
+        
+        // Start main control loop
+        this.flight_phase = FlightPhase.LIFTOFF;
+        this.mission_time = 0.0;
+        
+        io.println("Mission started");
+        return true;
+    }
+    
+    /**
+     * Main control loop
+     * This function should be called at the control frequency specified in the configuration
+     */
+    @deadline(10ms)
+    @safety_critical
+    public func update(dt: float) -> void {
+        // Update mission time
+        this.mission_time += dt;
+        
+        // Update sensors
+        this.updateSensors();
+        
+        // Update navigation
+        this.updateNavigation();
+        
+        // Update guidance
+        this.updateGuidance();
+        
+        // Update control
+        this.updateControl(dt);
+        
+        // Update safety systems
+        this.updateSafety();
+        
+        // Update telemetry
+        this.updateTelemetry();
+        
+        // Update flight phase
+        this.updateFlightPhase();
+    }
+    
+    /**
+     * Update sensors
+     */
+    private func updateSensors() -> void {
+        // Update IMU
+        this.imu.update();
+        
+        // Update GPS if above ground
+        if (this.position.z > 0.0) {
+            this.gps.update();
+        }
+        
+        // Update barometer
+        this.barometer.update();
+        
+        // Update fuel sensor
+        this.fuel_sensor.update();
+        
+        // Read sensor data
+        var imu_data = this.imu.getData();
+        var gps_data = this.gps.getData();
+        var baro_data = this.barometer.getData();
+        var fuel_data = this.fuel_sensor.getData();
+        
+        // Update state from sensors
+        this.acceleration = imu_data.acceleration;
+        this.angular_velocity = imu_data.angular_velocity;
+        
+        // Sensor fusion for position and velocity
+        if (this.position.z < 10000.0) {
+            // Below 10km, use barometer for altitude
+            var gps_position = gps_data.position;
+            this.position = Vector3(gps_position.x, gps_position.y, baro_data.altitude);
+        } else {
+            // Above 10km, use GPS for all position components
+            this.position = gps_data.position;
+        }
+        
+        this.velocity = gps_data.velocity;
+        
+        // Update attitude from IMU
+        this.attitude = imu_data.orientation;
+        
+        // Update mass from fuel sensor
+        var propellant_remaining = fuel_data.level * this.config.propellant_mass;
+        this.mass = this.config.dry_mass + propellant_remaining;
+    }
+    
+    /**
+     * Update navigation
+     */
+    private func updateNavigation() -> void {
+        // Update navigation system with current state
+        this.navigation_system.update(
+            position: this.position,
+            velocity: this.velocity,
+            attitude: this.attitude,
+            angular_velocity: this.angular_velocity,
+            mission_time: this.mission_time
+        );
+        
+        // Get navigation solution
+        var nav_solution = this.navigation_system.getSolution();
+        
+        // Update state with navigation solution
+        this.position = nav_solution.position;
+        this.velocity = nav_solution.velocity;
+        this.attitude = nav_solution.attitude;
+    }
+    
+    /**
+     * Update guidance
+     */
+    private func updateGuidance() -> void {
+        // Update guidance system with current state and target orbit
+        this.guidance_system.update(
+            position: this.position,
+            velocity: this.velocity,
+            mass: this.mass,
+            flight_phase: this.flight_phase,
+            target_orbit: this.target_orbit,
+            mission_time: this.mission_time
+        );
+        
+        // Get guidance commands
+        var guidance_cmd = this.guidance_system.getCommands();
+        
+        // Apply thrust command
+        if (this.flight_phase == FlightPhase.LIFTOFF || 
+            this.flight_phase == FlightPhase.ASCENT || 
+            this.flight_phase == FlightPhase.ORBITAL_INSERTION) {
+            
+            // Set thrust based on guidance command
+            this.thrust = guidance_cmd.thrust_fraction * this.config.engine_count * this.config.engine_thrust;
+            
+            // Calculate propellant flow rate
+            var isp = this.getIsp();
+            this.propellant_flow_rate = this.thrust / (isp * 9.81);
+        } else {
+            // No thrust in other phases
+            this.thrust = 0.0;
+            this.propellant_flow_rate = 0.0;
+        }
+    }
+    
+    /**
+     * Update control
+     */
+    private func updateControl(dt: float) -> void {
+        // Get guidance commands
+        var guidance_cmd = this.guidance_system.getCommands();
+        
+        // Update attitude controller
+        var torque = this.attitude_controller.update(
+            current_attitude: this.attitude,
+            angular_velocity: this.angular_velocity,
+            target_attitude: guidance_cmd.attitude
+        );
+        
+        // Convert torque to gimbal angles
+        var gimbal_angles = this.torqueToGimbalAngles(torque);
+        
+        // Apply gimbal angles to engines
+        this.applyGimbalAngles(gimbal_angles);
+        
+        // Update mass due to propellant consumption
+        if (this.propellant_flow_rate > 0.0) {
+            var propellant_used = this.propellant_flow_rate * dt;
+            this.mass -= propellant_used;
+            
+            // Ensure mass doesn't go below dry mass
+            if (this.mass < this.config.dry_mass) {
+                this.mass = this.config.dry_mass;
+            }
+        }
+    }
+    
+    /**
+     * Update safety systems
+     */
+    @safety_critical
+    private func updateSafety() -> void {
+        // Update fault detection system
+        this.fault_detection_system.update(
+            position: this.position,
+            velocity: this.velocity,
+            attitude: this.attitude,
+            angular_velocity: this.angular_velocity,
+            acceleration: this.acceleration,
+            thrust: this.thrust,
+            mission_time: this.mission_time
+        );
+        
+        // Check for critical faults
+        var faults = this.fault_detection_system.getFaults();
+        for (var i = 0; i < faults.length; i++) {
+            var fault = faults[i];
+            
+            if (fault.severity == safety.FaultSeverity.CRITICAL) {
+                io.println("CRITICAL FAULT: " + fault.message);
+                
+                // Activate flight termination system
+                this.flight_termination_system.activate();
+                
+                // Set flight phase to SAFING
+                this.flight_phase = FlightPhase.SAFING;
+            } else if (fault.severity == safety.FaultSeverity.HIGH) {
+                io.println("HIGH SEVERITY FAULT: " + fault.message);
+                
+                // Take corrective action based on fault type
+                this.handleFault(fault);
+            }
+        }
+        
+        // Check flight envelope
+        if (!this.isWithinFlightEnvelope()) {
+            io.println("FLIGHT ENVELOPE VIOLATION");
+            
+            // Activate flight termination system if in early flight phases
+            if (this.flight_phase == FlightPhase.LIFTOFF || 
+                this.flight_phase == FlightPhase.ASCENT) {
+                
+                this.flight_termination_system.activate();
+                this.flight_phase = FlightPhase.SAFING;
+            }
+        }
+    }
+    
+    /**
+     * Update telemetry
+     */
+    private func updateTelemetry() -> void {
+        // Create telemetry packet
+        var packet = telemetry.TelemetryPacket();
+        
+        // Add mission data
+        packet.add("mission_time", this.mission_time);
+        packet.add("flight_phase", this.flight_phase.toString());
+        
+        // Add position and velocity
+        packet.add("position_x", this.position.x);
+        packet.add("position_y", this.position.y);
+        packet.add("position_z", this.position.z);
+        packet.add("velocity_x", this.velocity.x);
+        packet.add("velocity_y", this.velocity.y);
+        packet.add("velocity_z", this.velocity.z);
+        packet.add("speed", this.velocity.magnitude());
+        
+        // Add attitude and angular velocity
+        var euler = this.attitude.toEuler();
+        packet.add("roll", Math.degrees(euler.x));
+        packet.add("pitch", Math.degrees(euler.y));
+        packet.add("yaw", Math.degrees(euler.z));
+        packet.add("roll_rate", Math.degrees(this.angular_velocity.x));
+        packet.add("pitch_rate", Math.degrees(this.angular_velocity.y));
+        packet.add("yaw_rate", Math.degrees(this.angular_velocity.z));
+        
+        // Add acceleration
+        packet.add("accel_x", this.acceleration.x);
+        packet.add("accel_y", this.acceleration.y);
+        packet.add("accel_z", this.acceleration.z);
+        packet.add("accel_magnitude", this.acceleration.magnitude());
+        
+        // Add propulsion data
+        packet.add("thrust", this.thrust);
+        packet.add("mass", this.mass);
+        packet.add("propellant_mass", this.mass - this.config.dry_mass);
+        packet.add("propellant_fraction", (this.mass - this.config.dry_mass) / this.config.propellant_mass);
+        
+        // Add orbit data if in orbit
+        if (this.flight_phase == FlightPhase.ORBIT) {
+            var current_orbit = this.navigation_system.getCurrentOrbit();
+            packet.add("semi_major_axis", current_orbit.semi_major_axis);
+            packet.add("eccentricity", current_orbit.eccentricity);
+            packet.add("inclination", current_orbit.inclination);
+            packet.add("raan", current_orbit.raan);
+            packet.add("arg_perigee", current_orbit.arg_perigee);
+            packet.add("true_anomaly", current_orbit.true_anomaly);
+            packet.add("period", current_orbit.period);
+            packet.add("apoapsis", current_orbit.apoapsis);
+            packet.add("periapsis", current_orbit.periapsis);
+        }
+        
+        // Send telemetry packet
+        this.telemetry_system.send(packet);
+    }
+    
+    /**
+     * Update flight phase
+     */
+    private func updateFlightPhase() -> void {
+        // Current flight phase
+        var current_phase = this.flight_phase;
+        
+        // Altitude above ground level
+        var altitude = this.position.z;
+        
+        // Speed
+        var speed = this.velocity.magnitude();
+        
+        // Check for phase transitions
+        if (current_phase == FlightPhase.LIFTOFF && altitude > 100.0) {
+            // Transition to ASCENT at 100m altitude
+            this.flight_phase = FlightPhase.ASCENT;
+            io.println("Flight phase: ASCENT");
+        } else if (current_phase == FlightPhase.ASCENT && this.mass <= this.config.dry_mass + 0.01) {
+            // Transition to STAGE_SEPARATION when propellant is depleted
+            this.flight_phase = FlightPhase.STAGE_SEPARATION;
+            io.println("Flight phase: STAGE_SEPARATION");
+        } else if (current_phase == FlightPhase.STAGE_SEPARATION && this.mission_time > 100.0) {
+            // Transition to COAST after separation (simplified)
+            this.flight_phase = FlightPhase.COAST;
+            io.println("Flight phase: COAST");
+        } else if (current_phase == FlightPhase.COAST && altitude > this.config.target_orbit_altitude * 0.9) {
+            // Transition to ORBITAL_INSERTION near target altitude
+            this.flight_phase = FlightPhase.ORBITAL_INSERTION;
+            io.println("Flight phase: ORBITAL_INSERTION");
+        } else if (current_phase == FlightPhase.ORBITAL_INSERTION) {
+            // Check if orbit is achieved
+            var current_orbit = this.navigation_system.getCurrentOrbit();
+            var orbit_error = this.calculateOrbitError(current_orbit, this.target_orbit);
+            
+            if (orbit_error < 0.01) {
+                // Transition to ORBIT when target orbit is achieved
+                this.flight_phase = FlightPhase.ORBIT;
+                io.println("Flight phase: ORBIT");
+            }
+        }
+    }
+    
+    /**
+     * Calculate specific impulse based on altitude
+     */
+    private func getIsp() -> float {
+        // Altitude above ground level
+        var altitude = this.position.z;
+        
+        // Atmospheric pressure ratio (simplified model)
+        var pressure_ratio = Math.exp(-altitude / 8000.0);
+        
+        // Interpolate between sea level and vacuum Isp
+        var isp = this.config.engine_isp_sl + (this.config.engine_isp_vac - this.config.engine_isp_sl) * (1.0 - pressure_ratio);
+        
+        return isp;
+    }
+    
+    /**
+     * Convert torque to gimbal angles
+     */
+    private func torqueToGimbalAngles(torque: Vector3) -> Vector2 {
+        // Simplified conversion from torque to pitch/yaw gimbal angles
+        // In a real system, this would depend on the specific engine configuration
+        
+        // Normalize torque to maximum allowed gimbal range
+        var max_torque = 1000.0;  // Simplified maximum torque
+        var normalized_torque = torque / max_torque;
+        
+        // Limit to gimbal range
+        var pitch_gimbal = Math.clamp(normalized_torque.y * this.config.gimbal_range, -this.config.gimbal_range, this.config.gimbal_range);
+        var yaw_gimbal = Math.clamp(normalized_torque.z * this.config.gimbal_range, -this.config.gimbal_range, this.config.gimbal_range);
+        
+        return Vector2(pitch_gimbal, yaw_gimbal);
+    }
+    
+    /**
+     * Apply gimbal angles to engines
+     */
+    private func applyGimbalAngles(gimbal_angles: Vector2) -> void {
+        // In a real system, this would command the actual engine gimbals
+        // For this example, we'll just log the gimbal angles
+        
+        if (this.thrust > 0.0) {
+            // Only log if engines are firing
+            io.println("Gimbal angles: pitch=" + gimbal_angles.x.toString() + "°, yaw=" + gimbal_angles.y.toString() + "°");
+        }
+    }
+    
+    /**
+     * Handle a fault
+     */
+    @safety_critical
+    private func handleFault(fault: safety.Fault) -> void {
+        // Handle fault based on type
+        if (fault.type == safety.FaultType.ATTITUDE_CONTROL) {
+            // Reset attitude controller
+            this.attitude_controller.reset();
+        } else if (fault.type == safety.FaultType.NAVIGATION) {
+            // Reset navigation system
+            this.navigation_system.reset();
+        } else if (fault.type == safety.FaultType.GUIDANCE) {
+            // Reset guidance system
+            this.guidance_system.reset();
+        } else if (fault.type == safety.FaultType.SENSOR) {
+            // Recalibrate sensors
+            this.imu.calibrate();
+            this.gps.calibrate();
+            this.barometer.calibrate();
+        }
+    }
+    
+    /**
+     * Check if the rocket is within its flight envelope
+     */
+    @safety_critical
+    private func isWithinFlightEnvelope() -> bool {
+        // Check angle of attack
+        var velocity_body = this.attitude.inverse().rotateVector(this.velocity.normalize());
+        var angle_of_attack = Math.acos(velocity_body.z);
+        
+        if (Math.degrees(angle_of_attack) > this.config.max_angle_of_attack) {
+            return false;
+        }
+        
+        // Check acceleration
+        if (this.acceleration.magnitude() > this.config.max_acceleration) {
+            return false;
+        }
+        
+        // Check angular velocity
+        var max_angular_velocity = 45.0;  // degrees per second
+        if (this.angular_velocity.magnitude() > Math.radians(max_angular_velocity)) {
+            return false;
+        }
+        
+        return true;
+    }
+    
+    /**
+     * Calculate error between current and target orbit
+     */
+    private func calculateOrbitError(current: orbital.Orbit, target: orbital.Orbit) -> float {
+        // Calculate weighted error between orbit parameters
+        var altitude_error = Math.abs(current.semi_major_axis - target.semi_major_axis) / target.semi_major_axis;
+        var inclination_error = Math.abs(current.inclination - target.inclination) / Math.max(0.1, target.inclination);
+        var eccentricity_error = Math.abs(current.eccentricity - target.eccentricity) / Math.max(0.001, target.eccentricity);
+        
+        // Weighted sum of errors
+        var total_error = 0.6 * altitude_error + 0.3 * inclination_error + 0.1 * eccentricity_error;
+        
+        return total_error;
+    }
+    
+    /**
+     * Get current flight phase
+     */
+    public func getFlightPhase() -> FlightPhase {
+        return this.flight_phase;
+    }
+    
+    /**
+     * Get mission time
+     */
+    public func getMissionTime() -> float {
+        return this.mission_time;
+    }
+    
+    /**
+     * Get current position
+     */
+    public func getPosition() -> Vector3 {
+        return this.position;
+    }
+    
+    /**
+     * Get current velocity
+     */
+    public func getVelocity() -> Vector3 {
+        return this.velocity;
+    }
+    
+    /**
+     * Get current attitude
+     */
+    public func getAttitude() -> Quaternion {
+        return this.attitude;
+    }
+    
+    /**
+     * Get current mass
+     */
+    public func getMass() -> float {
+        return this.mass;
+    }
+    
+    /**
+     * Get current thrust
+     */
+    public func getThrust() -> float {
+        return this.thrust;
+    }
+    
+    /**
+     * Get propellant level (0.0 to 1.0)
+     */
+    public func getPropellantLevel() -> float {
+        var propellant_mass = this.mass - this.config.dry_mass;
+        return Math.max(0.0, propellant_mass) / this.config.propellant_mass;
+    }
+}
+
+/**
+ * Main function
+ */
+func main() {
+    io.println("ASTRA Rocket Control System");
+    io.println("===========================");
+    
+    // Create rocket configuration
+    var config = RocketConfig(
+        // Physical properties
+        dry_mass: 5000.0,                // 5 tons dry mass
+        propellant_mass: 15000.0,        // 15 tons propellant
+        length: 25.0,                    // 25 meters length
+        diameter: 3.0,                   // 3 meters diameter
+        drag_coefficient: 0.2,           // Drag coefficient
+        reference_area: 7.07,            // Reference area (m²)
+        
+        // Engine properties
+        engine_count: 1,                 // Single engine
+        engine_thrust: 200000.0,         // 200 kN thrust
+        engine_isp_sl: 270.0,            // 270s Isp at sea level
+        engine_isp_vac: 310.0,           // 310s Isp in vacuum
+        gimbal_range: 5.0,               // 5 degrees gimbal range
+        
+        // Control properties
+        control_frequency: 100.0,        // 100 Hz control loop
+        max_angle_of_attack: 15.0,       // 15 degrees max AoA
+        max_acceleration: 50.0,          // 50 m/s² max acceleration
+        
+        // Mission parameters
+        target_orbit_altitude: 200000.0, // 200 km orbit
+        target_orbit_inclination: 28.5,  // 28.5 degrees inclination
+        target_orbit_eccentricity: 0.0   // Circular orbit
+    );
+    
+    // Create rocket control system
+    var rocket = RocketControlSystem(config);
+    
+    // Initialize the system
+    if (!rocket.initialize()) {
+        io.println("Failed to initialize rocket control system");
+        return;
+    }
+    
+    // Run pre-flight checks
+    if (!rocket.runPreflightChecks()) {
+        io.println("Pre-flight checks failed");
+        return;
+    }
+    
+    // Start the mission
+    if (!rocket.startMission()) {
+        io.println("Failed to start mission");
+        return;
+    }
+    
+    // Main simulation loop
+    var dt = 1.0 / config.control_frequency;
+    var sim_time = 0.0;
+    var max_sim_time = 1000.0;  // 1000 seconds simulation
+    
+    while (sim_time < max_sim_time) {
+        // Update rocket control system
+        rocket.update(dt);
+        
+        // Check if mission is complete
+        if (rocket.getFlightPhase() == FlightPhase.ORBIT) {
+            io.println("Mission complete: Orbit achieved");
+            break;
+        }
+        
+        // Check if mission failed
+        if (rocket.getFlightPhase() == FlightPhase.SAFING) {
+            io.println("Mission failed: Flight terminated");
+            break;
+        }
+        
+        // Update simulation time
+        sim_time += dt;
+        
+        // Sleep to simulate real-time operation (if running in real-time mode)
+        if (system.getEnvironmentVariable("REAL_TIME") == "1") {
+            time.sleep(dt);
+        }
+    }
+    
+    // Print mission summary
+    io.println("\nMission Summary:");
+    io.println("Mission time: " + rocket.getMissionTime().toString() + " seconds");
+    io.println("Final phase: " + rocket.getFlightPhase().toString());
+    io.println("Final altitude: " + (rocket.getPosition().z / 1000.0).toString() + " km");
+    io.println("Final velocity: " + (rocket.getVelocity().magnitude() / 1000.0).toString() + " km/s");
+    io.println("Propellant remaining: " + (rocket.getPropellantLevel() * 100.0).toString() + "%");
+}
+
+// Run the main function
+main();
