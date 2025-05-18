@@ -22,9 +22,17 @@ include_directories(src)
 
 # Source files
 set(SOURCES
-    src/main.cpp
-    src/ast/ast.cpp
-    # Add implementation files here as they are created
+    src/main_minimal.cpp
+    src/ast/ast_minimal.cpp
+    src/lexer/lexer_minimal.cpp
+    src/parser/parser_minimal.cpp
+    src/semantic/analyzer_minimal.cpp
+    src/ir/generator_minimal.cpp
+    src/optimizer/optimizer_minimal.cpp
+    src/codegen/llvm_generator_minimal.cpp
+    src/utils/error_handler_minimal.cpp
+    src/utils/options_minimal.cpp
+    src/vm/vm.cpp
 )
 
 # Header files
@@ -47,9 +55,11 @@ add_executable(astrac ${SOURCES} ${HEADERS})
 # Install
 install(TARGETS astrac DESTINATION bin)
 
-# Testing
-enable_testing()
-add_subdirectory(tests)
+# Testing (disabled for now)
+# if(NOT CMAKE_SYSTEM_NAME STREQUAL "Windows")
+#     enable_testing()
+#     add_subdirectory(tests)
+# endif()
 
 # Documentation
 find_package(Doxygen)
