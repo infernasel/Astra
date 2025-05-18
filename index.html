@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ASTRA Programming Language</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            background-color: #f8f9fa;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        header {
+            background: linear-gradient(135deg, #155799, #159957);
+            color: white;
+            text-align: center;
+            padding: 60px 0;
+        }
+        .logo {
+            max-width: 300px;
+            margin-bottom: 20px;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin: 0;
+        }
+        h2 {
+            font-size: 2rem;
+            color: #155799;
+            margin-top: 40px;
+        }
+        .tagline {
+            font-size: 1.2rem;
+            margin-top: 10px;
+        }
+        .badges {
+            margin: 20px 0;
+        }
+        .badge {
+            display: inline-block;
+            margin: 5px;
+        }
+        .cta-buttons {
+            margin: 30px 0;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #155799;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 4px;
+            font-weight: bold;
+            margin: 0 10px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #0e3d6b;
+        }
+        .btn-secondary {
+            background-color: #159957;
+        }
+        .btn-secondary:hover {
+            background-color: #0e6b3d;
+        }
+        .features {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            margin: 40px 0;
+        }
+        .feature {
+            flex-basis: calc(33.333% - 20px);
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .feature h3 {
+            color: #155799;
+            margin-top: 0;
+        }
+        pre {
+            background-color: #f1f1f1;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        code {
+            font-family: 'Courier New', Courier, monospace;
+        }
+        footer {
+            background-color: #333;
+            color: white;
+            text-align: center;
+            padding: 20px 0;
+            margin-top: 60px;
+        }
+        .footer-links a {
+            color: white;
+            margin: 0 10px;
+            text-decoration: none;
+        }
+        .footer-links a:hover {
+            text-decoration: underline;
+        }
+        @media (max-width: 768px) {
+            .feature {
+                flex-basis: 100%;
+            }
+            .btn {
+                display: block;
+                margin: 10px 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <img src="assets/astra_logo_light.png" alt="ASTRA Programming Language Logo" class="logo">
+            <h1>ASTRA Programming Language</h1>
+            <p class="tagline">A specialized programming language for spacecraft and UAV control</p>
+            <div class="badges">
+                <img src="https://img.shields.io/badge/version-0.1.1--alpha-blue?style=flat-square" alt="Version" class="badge">
+                <img src="https://img.shields.io/badge/coverage-89.8%25-brightgreen?style=flat-square" alt="Test Coverage" class="badge">
+                <img src="https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-lightgrey?style=flat-square" alt="Platforms" class="badge">
+                <img src="https://img.shields.io/badge/license-Custom-orange?style=flat-square" alt="License" class="badge">
+            </div>
+            <div class="cta-buttons">
+                <a href="https://github.com/infernasel/astra-language" class="btn">View on GitHub</a>
+                <a href="https://github.com/infernasel/astra-language/wiki" class="btn btn-secondary">Documentation</a>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <section>
+            <h2>About ASTRA</h2>
+            <p>
+                ASTRA (Autonomous System Task-oriented Reliable Architecture) is a specialized programming language designed for controlling spacecraft and unmanned aerial vehicles (UAVs). This project aims to create a high-efficiency, safety-focused language for developing software used in spacecraft control, satellite systems, interorbital transfers, and autonomous drone flights.
+            </p>
+        </section>
+
+        <section class="features">
+            <div class="feature">
+                <h3>Easy to Learn</h3>
+                <p>Designed specifically for space engineers with a syntax that is intuitive and easy to understand.</p>
+            </div>
+            <div class="feature">
+                <h3>High Performance</h3>
+                <p>High-speed compilation with minimal memory usage for efficient execution in resource-constrained environments.</p>
+            </div>
+            <div class="feature">
+                <h3>Concurrent Computing</h3>
+                <p>Efficient support for multi-threaded data processing and asynchronous computing.</p>
+            </div>
+            <div class="feature">
+                <h3>Type Safety</h3>
+                <p>Strong type system with protection against accidental variable changes for reliable code.</p>
+            </div>
+            <div class="feature">
+                <h3>Specialized Capabilities</h3>
+                <p>Built-in support for vector operations, trajectory calculations, and space/atmospheric modeling.</p>
+            </div>
+            <div class="feature">
+                <h3>Safety Features</h3>
+                <p>Formal verification, automatic algorithm correctness checking, and comprehensive error handling.</p>
+            </div>
+        </section>
+
+        <section>
+            <h2>Example Code</h2>
+            <pre><code>module FlightControl;
+
+import Sensors;
+import Navigation;
+
+// Define a task for autonomous navigation
+task NavigateToPoint(point: Vec3) {
+    // Error handling with try-catch
+    try {
+        // Get current position from GPS
+        let currentPos = Sensors.GPS.getPosition();
+        
+        // Calculate path
+        let path = Navigation.findPath(currentPos, point);
+        
+        // Follow path with concurrent monitoring
+        parallel {
+            // Main flight control
+            Navigation.followPath(path);
+            
+            // Concurrent obstacle detection
+            Sensors.ObstacleDetection.monitor();
+        }
+    } catch (e: NavigationError) {
+        // Handle navigation errors
+        log.error("Navigation failed: ${e.message}");
+        return false;
+    }
+    
+    return true;
+}</code></pre>
+        </section>
+
+        <section>
+            <h2>Getting Started</h2>
+            <p>
+                Visit our <a href="https://github.com/infernasel/astra-language/wiki/Getting-Started">Getting Started Guide</a> to learn how to install ASTRA and create your first program.
+            </p>
+            <div class="cta-buttons">
+                <a href="https://github.com/infernasel/astra-language/releases" class="btn">Download</a>
+                <a href="https://github.com/infernasel/astra-language/wiki" class="btn btn-secondary">Read Documentation</a>
+            </div>
+        </section>
+    </div>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2025 ASTRA Language Team. All rights reserved.</p>
+            <div class="footer-links">
+                <a href="https://github.com/infernasel/astra-language">GitHub</a>
+                <a href="https://github.com/infernasel/astra-language/wiki">Documentation</a>
+                <a href="https://github.com/infernasel/astra-language/blob/main/CUSTOM_LICENSE.md">License</a>
+                <a href="mailto:support@arlist-interactive.ru">Contact</a>
+            </div>
+        </div>
+    </footer>
+</body>
+</html>
