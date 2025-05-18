@@ -11,40 +11,57 @@
 namespace astra {
 
 /**
+ * Output type for code generation
+ */
+enum class OutputType {
+    LLVM_IR,    // Generate LLVM IR (.ll file)
+    Object,     // Generate object file (.o file)
+    Executable  // Generate executable
+};
+
+/**
+ * Code generation options
+ */
+struct CodeGenOptions {
+    OutputType outputType = OutputType::LLVM_IR;
+    int optimizationLevel = 0;
+    bool enableDebugInfo = false;
+    std::string targetTriple = "";
+    std::string targetCPU = "";
+    std::string targetFeatures = "";
+};
+
+/**
  * LLVM Code Generator
  */
 class LLVMCodeGenerator : public CodeGenerator {
 private:
-    // LLVM-specific members would go here in a real implementation
+    ErrorHandler& errorHandler;
+    CodeGenOptions options;
+    
+    // LLVM-specific methods
+    void initializeLLVM();
+    void cleanupLLVM();
+    std::string generateLLVMIR(std::shared_ptr<IRModule> module);
+    std::string getLLVMType(IRType type);
+    std::string generateInstruction(std::shared_ptr<IRInstruction> inst);
+    bool compileLLVMIR(const std::string& irFile);
 
 public:
     /**
      * Constructor
      */
-    LLVMCodeGenerator(const std::string& target, ErrorHandler& errHandler)
-        : CodeGenerator(target, errHandler) {
-        // Initialize LLVM-specific components
-    }
+    LLVMCodeGenerator(ErrorHandler& errorHandler, const CodeGenOptions& options = CodeGenOptions());
+    
+    /**
+     * Destructor
+     */
+    ~LLVMCodeGenerator();
     
     /**
      * Generate LLVM IR and compile to target code
      */
-    virtual bool generate(std::shared_ptr<IRModule> module, const std::string& outputFile) override {
-        // This is a placeholder implementation
-        // In a real implementation, we would generate LLVM IR and compile it
-        
-        // For now, just create an empty output file to simulate success
-        std::ofstream outFile(outputFile);
-        if (!outFile) {
-            errorHandler.error("Failed to create output file: " + outputFile);
-            return false;
-        }
-        
-        outFile << "// ASTRA compiled code - placeholder\n";
-        outFile.close();
-        
-        return true;
-    }
+    virtual bool generate(std::shared_ptr<IRModule> module, const std::string& outputFile) override;
 };
 
 } // namespace astra
