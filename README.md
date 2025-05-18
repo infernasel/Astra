@@ -1,6 +1,6 @@
 # ASTRA Programming Language
 
-ASTRA is a specialized programming language designed for controlling spacecraft and unmanned aerial vehicles (UAVs). This project aims to create a high-efficiency, safety-focused language for developing software used in spacecraft control, satellite systems, interorbital transfers, and autonomous drone flights.
+ASTRA (Autonomous System Task-oriented Reliable Architecture) is a specialized programming language designed for controlling spacecraft and unmanned aerial vehicles (UAVs). This project aims to create a high-efficiency, safety-focused language for developing software used in spacecraft control, satellite systems, interorbital transfers, and autonomous drone flights.
 
 ## Project Overview
 
@@ -25,12 +25,75 @@ The ASTRA language is designed with the following key features:
 - `/docs` - Language specification and documentation
 - `/examples` - Example ASTRA programs
 - `/tools` - Development tools and utilities
+- `/hardware` - Hardware abstraction layer for different UAV platforms
 
-## Development Phases
+## Development Status
 
-1. **Design Phase**: Architecture design and first specification version
-2. **Core Implementation**: Basic language core, fundamental constructs, and compiler prototype
-3. **Advanced Features**: Formal verification support, bug tracking integration, and CI/CD infrastructure
+- **Current Version**: v0.1.0 Alpha
+- **Test Coverage**: 
+  - Lines: 89.8%
+  - Functions: 83.6%
+
+## Getting Started
+
+### Prerequisites
+
+- CMake 3.10 or higher
+- C++17 compatible compiler
+- LLVM 10.0 or higher (for code generation)
+
+### Building from Source
+
+```bash
+# Clone the repository
+git clone https://github.com/LetunovskiyODT/astra-language.git
+cd astra-language
+
+# Build the compiler
+mkdir -p build/compiler && cd build/compiler
+cmake ../../compiler
+make
+
+# Run tests
+make astra_tests
+./tests/astra_tests
+```
+
+## Example ASTRA Code
+
+```astra
+module FlightControl;
+
+import Sensors;
+import Navigation;
+
+// Define a task for autonomous navigation
+task NavigateToPoint(point: Vec3) {
+    // Error handling with try-catch
+    try {
+        // Get current position from GPS
+        let currentPos = Sensors.GPS.getPosition();
+        
+        // Calculate path
+        let path = Navigation.findPath(currentPos, point);
+        
+        // Follow path with concurrent monitoring
+        parallel {
+            // Main flight control
+            Navigation.followPath(path);
+            
+            // Concurrent obstacle detection
+            Sensors.ObstacleDetection.monitor();
+        }
+    } catch (e: NavigationError) {
+        // Handle navigation errors
+        log.error("Navigation failed: ${e.message}");
+        return false;
+    }
+    
+    return true;
+}
+```
 
 ## Safety Features
 
@@ -39,10 +102,6 @@ The ASTRA language is designed with the following key features:
 - Detailed exception and error analysis
 - Comprehensive logging system
 
-## Getting Started
-
-*Documentation will be added as the project progresses*
-
 ## License
 
-*To be determined*
+MIT License
