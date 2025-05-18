@@ -29,10 +29,13 @@ The ASTRA language is designed with the following key features:
 
 ## Development Status
 
-- **Current Version**: v0.1.0 Alpha
+- **Current Version**: v0.1.1 Alpha
 - **Test Coverage**: 
   - Lines: 89.8%
   - Functions: 83.6%
+- **Platforms**:
+  - Linux (x86_64)
+  - Windows (x86_64)
 
 ## Getting Started
 
@@ -46,7 +49,7 @@ The ASTRA language is designed with the following key features:
 
 ```bash
 # Clone the repository
-git clone https://github.com/LetunovskiyODT/astra-language.git
+git clone https://github.com/infernasel/astra-language.git
 cd astra-language
 
 # Build the compiler
@@ -58,6 +61,13 @@ make
 make astra_tests
 ./tests/astra_tests
 ```
+
+### Pre-built Binaries
+
+Pre-built binaries are available for the following platforms:
+
+- **Windows (x86_64)**: Available in the [release/windows](https://github.com/infernasel/astra-language/tree/feature/documentation/release/windows) directory
+- **Linux (x86_64)**: Coming soon
 
 ## Example ASTRA Code
 
