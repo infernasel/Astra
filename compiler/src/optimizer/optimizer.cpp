@@ -77,7 +77,7 @@ void Optimizer::optimize(std::unique_ptr<IRModule>& module) {
         tailCallPass->run(sharedModule);
     }
     
-    // Convert back to unique_ptr
+    module = std::unique_ptr<IRModule>(std::move(sharedModule));
     module = std::unique_ptr<IRModule>(sharedModule.get());
     sharedModule.release(); // Release ownership from shared_ptr
 }
