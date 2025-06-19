@@ -26,10 +26,10 @@ void IRGenerator::visit(LiteralExpression& node) {
     // Generate IR for literals
     switch (node.token.type) {
         case TokenType::IntegerLiteral:
-            currentValue = std::make_shared<IRConstant>(std::stoi(node.token.lexeme), IRType::Int);
-            break;
-        case TokenType::FloatLiteral:
-            currentValue = std::make_shared<IRConstant>(std::stof(node.token.lexeme), IRType::Float);
+            try {
+                currentValue = std::make_shared<IRConstant>(std::stoi(node.token.lexeme), IRType::Int);
+            } catch (const std::invalid_argument& e) {
+                errorHandler.reportError("Invalid integer literal: " + node.token.lexeme,
             break;
         case TokenType::BooleanLiteral:
             currentValue = std::make_shared<IRConstant>(node.token.lexeme == "true", IRType::Bool);
